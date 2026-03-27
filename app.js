@@ -1,6 +1,6 @@
 const ENTITY_TYPES = [
   { key: "corporation", label: "Corporation", shortLabel: "Corporation", color: "#d8c2a8" },
-  { key: "partnership", label: "Partnership", shortLabel: "Partnership", color: "#d8e5d2" },
+  { key: "partnership", label: "Partnership", shortLabel: "Pship", color: "#d8e5d2" },
   {
     key: "dreg",
     label: "Disregarded / Hybrid Entity",
@@ -10,19 +10,18 @@ const ENTITY_TYPES = [
   { key: "hybrid-partnership", label: "Hybrid Partnership", shortLabel: "Hybrid Partnership", color: "#d5e4df" },
   { key: "reverse-hybrid", label: "Reverse Hybrid", shortLabel: "Reverse Hybrid", color: "#c8ddd7" },
   { key: "individual", label: "Individual", shortLabel: "Individual", color: "#f2d3c2" },
-  { key: "trust", label: "Trust", shortLabel: "Trust", color: "#e3ddcf" },
+  { key: "trust", label: "Trust or other Non-Entity", shortLabel: "Trust / Non-Entity", color: "#e3ddcf" },
 ];
 
 const svgNs = "http://www.w3.org/2000/svg";
 const canvas = document.getElementById("diagramCanvas");
+const canvasCard = document.querySelector(".canvas-card");
 const entityPalette = document.getElementById("entityPalette");
 const entityTypeSelect = document.getElementById("entityType");
-const entityList = document.getElementById("entityList");
-const edgeList = document.getElementById("edgeList");
+const entityJurisdictionSelect = document.getElementById("entityJurisdiction");
 const savedDiagramList = document.getElementById("savedDiagramList");
 const selectionType = document.getElementById("selectionType");
 const modeStatus = document.getElementById("modeStatus");
-const diagramStats = document.getElementById("diagramStats");
 const entityForm = document.getElementById("entityForm");
 const edgeForm = document.getElementById("edgeForm");
 const emptySelection = document.getElementById("emptySelection");
@@ -31,12 +30,26 @@ const narrativeInput = document.getElementById("narrativeInput");
 const state = {
   nodes: [],
   edges: [],
+  workspaceHeight: 900,
+  zoom: 1,
+  transactionLegend: {
+    enabled: false,
+    arrowEndText: "",
+    nonArrowEndText: "",
+    x: 70,
+    y: 760,
+  },
   selection: null,
+  selectedNodeIds: [],
   mode: "select",
   pendingConnection: null,
   drag: null,
   edgeDrag: null,
   labelDrag: null,
+  legendDrag: null,
+  pan: null,
+  marquee: null,
+  suppressBlankClick: false,
   suppressClickNodeId: null,
   nextNodeId: 1,
   nextEdgeId: 1,
@@ -58,16 +71,83 @@ const RELATIONSHIP_VERBS = [
   "transfers",
   "redeems",
 ];
+const JURISDICTION_OPTIONS = [
+  { value: "", label: "None", flag: "" },
+  { value: "AR", label: "Argentina", flag: "🇦🇷" },
+  { value: "AT", label: "Austria", flag: "🇦🇹" },
+  { value: "AU", label: "Australia", flag: "🇦🇺" },
+  { value: "BD", label: "Bangladesh", flag: "🇧🇩" },
+  { value: "BE", label: "Belgium", flag: "🇧🇪" },
+  { value: "BR", label: "Brazil", flag: "🇧🇷" },
+  { value: "CA", label: "Canada", flag: "🇨🇦" },
+  { value: "CH", label: "Switzerland", flag: "🇨🇭" },
+  { value: "CN", label: "China", flag: "🇨🇳" },
+  { value: "DE", label: "Germany", flag: "🇩🇪" },
+  { value: "ES", label: "Spain", flag: "🇪🇸" },
+  { value: "FR", label: "France", flag: "🇫🇷" },
+  { value: "GB", label: "United Kingdom", flag: "🇬🇧" },
+  { value: "ID", label: "Indonesia", flag: "🇮🇩" },
+  { value: "IE", label: "Ireland", flag: "🇮🇪" },
+  { value: "IL", label: "Israel", flag: "🇮🇱" },
+  { value: "IN", label: "India", flag: "🇮🇳" },
+  { value: "IT", label: "Italy", flag: "🇮🇹" },
+  { value: "JP", label: "Japan", flag: "🇯🇵" },
+  { value: "KR", label: "South Korea", flag: "🇰🇷" },
+  { value: "MX", label: "Mexico", flag: "🇲🇽" },
+  { value: "NL", label: "Netherlands", flag: "🇳🇱" },
+  { value: "NO", label: "Norway", flag: "🇳🇴" },
+  { value: "PH", label: "Philippines", flag: "🇵🇭" },
+  { value: "PL", label: "Poland", flag: "🇵🇱" },
+  { value: "RU", label: "Russia", flag: "🇷🇺" },
+  { value: "SA", label: "Saudi Arabia", flag: "🇸🇦" },
+  { value: "SE", label: "Sweden", flag: "🇸🇪" },
+  { value: "SG", label: "Singapore", flag: "🇸🇬" },
+  { value: "TH", label: "Thailand", flag: "🇹🇭" },
+  { value: "TR", label: "Turkey", flag: "🇹🇷" },
+  { value: "TW", label: "Taiwan", flag: "🇹🇼" },
+  { value: "US", label: "United States", flag: "🇺🇸" },
+  { value: "AE", label: "United Arab Emirates", flag: "🇦🇪" },
+  { value: "VN", label: "Vietnam", flag: "🇻🇳" },
+  { value: "BM", label: "Bermuda", flag: "🇧🇲" },
+  { value: "KY", label: "Cayman Islands", flag: "🇰🇾" },
+  { value: "VG", label: "British Virgin Islands", flag: "🇻🇬" },
+  { value: "JE", label: "Jersey", flag: "🇯🇪" },
+  { value: "GG", label: "Guernsey", flag: "🇬🇬" },
+  { value: "DK", label: "Denmark", flag: "🇩🇰" },
+  { value: "FI", label: "Finland", flag: "🇫🇮" },
+  { value: "GR", label: "Greece", flag: "🇬🇷" },
+  { value: "LU", label: "Luxembourg", flag: "🇱🇺" },
+  { value: "PT", label: "Portugal", flag: "🇵🇹" },
+  { value: "CZ", label: "Czechia", flag: "🇨🇿" },
+  { value: "RO", label: "Romania", flag: "🇷🇴" },
+  { value: "HK", label: "Hong Kong", flag: "🇭🇰" },
+  { value: "NZ", label: "New Zealand", flag: "🇳🇿" },
+  { value: "ZA", label: "South Africa", flag: "🇿🇦" },
+  { value: "__custom__", label: "Custom...", flag: "" },
+];
 const BROWSER_SAVE_KEY = "tax-structure-diagram-saves";
 const MAX_BROWSER_SAVES = 5;
 
 function init() {
+  applyCanvasDimensions();
   syncCanvasMetrics();
   buildPalette();
   buildTypeOptions();
+  buildJurisdictionOptions();
   bindEvents();
   seedDemo();
   render();
+}
+
+function applyCanvasDimensions() {
+  VIEWBOX.height = state.workspaceHeight;
+  canvas.setAttribute("viewBox", `0 0 ${VIEWBOX.width} ${VIEWBOX.height}`);
+  const zoomedWidth = Math.round(VIEWBOX.width * state.zoom);
+  const zoomedHeight = Math.round(VIEWBOX.height * state.zoom);
+  canvas.setAttribute("width", String(zoomedWidth));
+  canvas.setAttribute("height", String(zoomedHeight));
+  canvas.style.width = `${zoomedWidth}px`;
+  canvas.style.height = `${zoomedHeight}px`;
 }
 
 function syncCanvasMetrics() {
@@ -77,9 +157,9 @@ function syncCanvasMetrics() {
       ? Math.min(rect.width / VIEWBOX.width, rect.height / VIEWBOX.height)
       : 1;
   const safeScale = scale > 0 ? scale : 1;
-  GRID = DISPLAY_GRID / safeScale;
+  GRID = DISPLAY_GRID;
   SNAP_THRESHOLD = DISPLAY_SNAP_THRESHOLD / safeScale;
-  BOX = { width: GRID * 3, height: GRID * 2 };
+  BOX = { width: DISPLAY_GRID * 3, height: DISPLAY_GRID * 2 };
 }
 
 function buildPalette() {
@@ -103,6 +183,35 @@ function buildTypeOptions() {
   });
 }
 
+function buildJurisdictionOptions() {
+  entityJurisdictionSelect.innerHTML = "";
+  const seen = new Set();
+  const uniqueOptions = JURISDICTION_OPTIONS.filter((jurisdiction) => {
+    if (seen.has(jurisdiction.value)) return false;
+    seen.add(jurisdiction.value);
+    return true;
+  });
+
+  const noneOption = uniqueOptions.find((jurisdiction) => jurisdiction.value === "");
+  const usOption = uniqueOptions.find((jurisdiction) => jurisdiction.value === "US");
+  const customOption = uniqueOptions.find((jurisdiction) => jurisdiction.value === "__custom__");
+  const remaining = uniqueOptions
+    .filter(
+      (jurisdiction) =>
+        jurisdiction.value !== "" &&
+        jurisdiction.value !== "US" &&
+        jurisdiction.value !== "__custom__",
+    )
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  [noneOption, usOption, ...remaining, customOption].filter(Boolean).forEach((jurisdiction) => {
+    const option = document.createElement("option");
+    option.value = jurisdiction.value;
+    option.textContent = jurisdiction.label;
+    entityJurisdictionSelect.appendChild(option);
+  });
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.addEventListener("click", () => setMode(button.dataset.mode));
@@ -122,17 +231,26 @@ function bindEvents() {
     render();
   });
 
-  document.getElementById("entityJurisdiction").addEventListener("input", (event) => {
+  document.getElementById("entityJurisdiction").addEventListener("change", (event) => {
     const node = getSelectedNode();
     if (!node) return;
-    node.jurisdiction = event.target.value;
+    if (event.target.value === "__custom__") {
+      node.jurisdictionMode = "custom";
+      node.jurisdiction = "";
+    } else {
+      node.jurisdictionMode = event.target.value ? "flag" : "";
+      node.jurisdiction = event.target.value;
+      node.jurisdictionCustom = "";
+    }
     render();
   });
 
-  document.getElementById("entityNotes").addEventListener("input", (event) => {
+  document.getElementById("entityJurisdictionCustom").addEventListener("input", (event) => {
     const node = getSelectedNode();
     if (!node) return;
-    node.notes = event.target.value;
+    node.jurisdictionMode = "custom";
+    node.jurisdictionCustom = event.target.value;
+    render();
   });
 
   document.getElementById("entityLineStyle").addEventListener("change", (event) => {
@@ -146,6 +264,20 @@ function bindEvents() {
     const node = getSelectedNode();
     if (!node) return;
     node.fill = event.target.value;
+    render();
+  });
+
+  document.getElementById("entityCrossedOut").addEventListener("change", (event) => {
+    const node = getSelectedNode();
+    if (!node) return;
+    node.crossedOut = event.target.checked;
+    render();
+  });
+
+  document.getElementById("entityMultipleIndividuals").addEventListener("change", (event) => {
+    const node = getSelectedNode();
+    if (!node) return;
+    node.multipleIndividuals = event.target.checked;
     render();
   });
 
@@ -197,6 +329,12 @@ function bindEvents() {
     edge.lineStyle = event.target.value;
     render();
   });
+  document.getElementById("edgeBidirectional").addEventListener("change", (event) => {
+    const edge = getSelectedEdge();
+    if (!edge || edge.kind !== "transaction") return;
+    edge.bidirectional = event.target.checked;
+    render();
+  });
   document.getElementById("reverseEdge").addEventListener("click", reverseSelectedEdge);
 
   document.getElementById("deleteEntity").addEventListener("click", deleteSelectedEntity);
@@ -210,13 +348,29 @@ function bindEvents() {
     generateFromNarrative({ mode: "apply" });
   });
   document.getElementById("saveBrowser").addEventListener("click", saveBrowserDiagram);
-  document.getElementById("saveJson").addEventListener("click", downloadJson);
-  document.getElementById("loadJson").addEventListener("click", () => {
-    document.getElementById("fileLoader").click();
-  });
-  document.getElementById("fileLoader").addEventListener("change", loadJson);
+  document.getElementById("zoomOut").addEventListener("click", () => setZoom(state.zoom - 0.1));
+  document.getElementById("zoomReset").addEventListener("click", () => setZoom(1));
+  document.getElementById("zoomIn").addEventListener("click", () => setZoom(state.zoom + 0.1));
   document.getElementById("exportSvg").addEventListener("click", exportSvg);
   document.getElementById("exportPng").addEventListener("click", exportPng);
+  document
+    .getElementById("transactionLegendEnabled")
+    .addEventListener("change", (event) => {
+      state.transactionLegend.enabled = event.target.checked;
+      render();
+    });
+  document
+    .getElementById("transactionLegendArrowEnd")
+    .addEventListener("input", (event) => {
+      state.transactionLegend.arrowEndText = event.target.value;
+      render();
+    });
+  document
+    .getElementById("transactionLegendNonArrowEnd")
+    .addEventListener("input", (event) => {
+      state.transactionLegend.nonArrowEndText = event.target.value;
+      render();
+    });
 
   canvas.addEventListener("mousedown", handleCanvasMouseDown);
   window.addEventListener("mousemove", handleCanvasMouseMove);
@@ -239,17 +393,21 @@ function addNode(typeKey, options = {}) {
     label: options.label || `${type.shortLabel} ${number}`,
     type: typeKey,
     jurisdiction: options.jurisdiction || "",
-    notes: options.notes || "",
+    jurisdictionMode: options.jurisdictionMode || "",
+    jurisdictionCustom: options.jurisdictionCustom || "",
     lineStyle: options.lineStyle || "solid",
     fill: options.fill || "none",
+    crossedOut: Boolean(options.crossedOut),
     innerLineStyle: options.innerLineStyle || "solid",
     innerFill: options.innerFill || "none",
+    multipleIndividuals: Boolean(options.multipleIndividuals),
     x: options.x ?? GRID * 3 + ((number - 1) % 3) * (GRID * 6),
     y: options.y ?? GRID * 3 + Math.floor((number - 1) / 3) * (GRID * 4),
   };
   state.nextNodeId += 1;
   state.nodes.push(node);
   if (!options.silent) {
+    state.selectedNodeIds = [node.id];
     state.selection = { kind: "node", id: node.id };
   }
   render();
@@ -293,6 +451,7 @@ function createEdge(fromId, toId, kind, options = {}) {
       if (options.preserveDirection !== undefined) {
         duplicate.preserveDirection = Boolean(options.preserveDirection);
       }
+      state.selectedNodeIds = [];
       state.selection = { kind: "edge", id: duplicate.id };
       render();
       return duplicate;
@@ -309,10 +468,12 @@ function createEdge(fromId, toId, kind, options = {}) {
     color: options.color || "black",
     lineStyle: options.lineStyle || "solid",
     curveOffset: options.curveOffset || 0,
+    bidirectional: Boolean(options.bidirectional),
     preserveDirection: Boolean(options.preserveDirection),
   };
   state.nextEdgeId += 1;
   state.edges.push(edge);
+  state.selectedNodeIds = [];
   state.selection = { kind: "edge", id: edge.id };
   return edge;
 }
@@ -321,7 +482,9 @@ function setMode(mode) {
   state.mode = mode;
   state.pendingConnection = null;
   state.selection = null;
+  state.selectedNodeIds = [];
   state.suppressClickNodeId = null;
+  state.suppressBlankClick = false;
   render();
 }
 
@@ -345,11 +508,13 @@ function selectNode(nodeId) {
     return;
   }
 
+  state.selectedNodeIds = [nodeId];
   state.selection = { kind: "node", id: nodeId };
   render();
 }
 
 function selectEdge(edgeId) {
+  state.selectedNodeIds = [];
   state.selection = { kind: "edge", id: edgeId };
   render();
 }
@@ -357,17 +522,18 @@ function selectEdge(edgeId) {
 function render() {
   renderCanvas();
   renderInspector();
-  renderLists();
   renderSavedDiagrams();
   renderControls();
 }
 
 function renderCanvas() {
+  applyCanvasDimensions();
   syncCanvasMetrics();
   const defs = canvas.querySelector("defs");
   canvas.innerHTML = "";
   canvas.appendChild(defs);
   canvas.onclick = handleCanvasBlankClick;
+  renderCanvasBackdrop();
   const ownershipBranchLevels = buildOwnershipBranchLevels();
   const ownershipSegments = buildOwnershipSegments(ownershipBranchLevels);
 
@@ -396,8 +562,16 @@ function renderCanvas() {
     }
     if (edge.kind === "transaction") {
       path.setAttribute("marker-end", `url(#transactionArrow-${edge.color || "black"})`);
+      if (edge.bidirectional) {
+        path.setAttribute("marker-start", `url(#transactionArrow-${edge.color || "black"})`);
+      }
     }
     group.appendChild(path);
+
+    const hitPath = document.createElementNS(svgNs, "path");
+    hitPath.classList.add("edge-hitbox");
+    hitPath.setAttribute("d", pathData);
+    group.appendChild(hitPath);
 
     const labelTexts =
       edge.kind === "ownership"
@@ -441,34 +615,82 @@ function renderCanvas() {
     if (isSelected("node", node.id) || state.pendingConnection === node.id) {
       group.classList.add("selected");
     }
+    if (state.selectedNodeIds.length > 1 && state.selectedNodeIds.includes(node.id)) {
+      group.classList.add("multi-selected");
+    }
     group.dataset.nodeId = node.id;
     group.setAttribute("transform", `translate(${node.x}, ${node.y})`);
 
-    const type = getType(node.type);
+    if (node.type === "individual") {
+      const hitbox = document.createElementNS(svgNs, "rect");
+      hitbox.classList.add("entity-hitbox");
+      hitbox.setAttribute("width", BOX.width);
+      hitbox.setAttribute("height", BOX.height);
+      hitbox.setAttribute("fill", "#ffffff");
+      hitbox.setAttribute("fill-opacity", "0.001");
+      hitbox.setAttribute("stroke", "none");
+      group.appendChild(hitbox);
+    }
 
-    const shape = createEntityShape(node.type);
+    const shape = createEntityShape(node);
     applyEntityStyles(shape, node);
     group.appendChild(shape);
+
+    if (node.crossedOut && node.type !== "individual") {
+      group.appendChild(createCrossOverlay(node));
+    }
 
     const title = document.createElementNS(svgNs, "text");
     title.classList.add("entity-text");
     title.setAttribute("x", BOX.width / 2);
-    title.setAttribute("y", node.type === "individual" ? BOX.height + 20 : BOX.height / 2 + 6);
-    title.setAttribute("font-size", "20");
-    title.setAttribute("font-weight", "700");
+    title.setAttribute("font-size", "16");
+    title.setAttribute("font-weight", "600");
     title.setAttribute("text-anchor", "middle");
-    title.textContent = node.label;
+    const labelLines = wrapEntityLabel(node);
+    let baseY =
+      node.type === "individual"
+        ? BOX.height + 20
+        : hasJurisdictionDisplay(node)
+          ? BOX.height / 2 - 6
+          : BOX.height / 2 + 6;
+    if (node.type === "partnership") {
+      baseY += 18;
+    }
+    const lineHeight = 20;
+    const firstLineY = baseY - ((labelLines.length - 1) * lineHeight) / 2;
+    const lastLineY = firstLineY + (labelLines.length - 1) * lineHeight;
+    labelLines.forEach((line, index) => {
+      const tspan = document.createElementNS(svgNs, "tspan");
+      tspan.setAttribute("x", BOX.width / 2);
+      tspan.setAttribute("y", firstLineY + index * lineHeight);
+      tspan.textContent = line;
+      title.appendChild(tspan);
+    });
     group.appendChild(title);
+
+    renderJurisdiction(group, node, { lastLineY });
 
     canvas.appendChild(group);
   });
+
+  if (state.marquee) {
+    const marquee = document.createElementNS(svgNs, "rect");
+    marquee.classList.add("selection-marquee");
+    marquee.setAttribute("x", state.marquee.rect.x);
+    marquee.setAttribute("y", state.marquee.rect.y);
+    marquee.setAttribute("width", state.marquee.rect.width);
+    marquee.setAttribute("height", state.marquee.rect.height);
+    canvas.appendChild(marquee);
+  }
+
+  renderTransactionLegend();
 
 }
 
 function renderInspector() {
   const node = getSelectedNode();
   const edge = getSelectedEdge();
-  const hasSelection = Boolean(node || edge);
+  const hasSelection = Boolean(node || edge || state.selectedNodeIds.length > 1);
 
   emptySelection.classList.toggle("hidden", hasSelection);
   entityForm.classList.toggle("hidden", !node);
@@ -478,21 +700,32 @@ function renderInspector() {
     selectionType.textContent = "Entity selected";
     document.getElementById("entityLabel").value = node.label;
     document.getElementById("entityType").value = node.type;
-    document.getElementById("entityJurisdiction").value = node.jurisdiction;
-    document.getElementById("entityNotes").value = node.notes;
+    const jurisdictionDisplay = getJurisdictionDisplay(node);
+    document.getElementById("entityJurisdiction").value =
+      jurisdictionDisplay.mode === "custom" ? "__custom__" : jurisdictionDisplay.value;
+    document.getElementById("entityJurisdictionCustom").value = jurisdictionDisplay.customText;
+    document
+      .getElementById("entityJurisdictionCustomGroup")
+      .classList.toggle("hidden", jurisdictionDisplay.mode !== "custom");
     document.getElementById("entityLineStyle").value = node.lineStyle || "solid";
     document.getElementById("entityFill").value = node.fill || "none";
+    document.getElementById("entityCrossedOut").checked = Boolean(node.crossedOut);
+    document.getElementById("entityMultipleIndividuals").checked = Boolean(
+      node.multipleIndividuals,
+    );
     document.getElementById("entityInnerLineStyle").value = node.innerLineStyle || "solid";
     document.getElementById("entityInnerFill").value = node.innerFill || "none";
+    document.getElementById("edgeBidirectionalGroup").classList.add("hidden");
+    const isIndividual = node.type === "individual";
     const supportsInnerShape = ["dreg", "hybrid-partnership", "reverse-hybrid"].includes(
       node.type,
     );
-    document
-      .getElementById("entityInnerLineStyleGroup")
-      .classList.toggle("hidden", !supportsInnerShape);
-    document
-      .getElementById("entityInnerFillGroup")
-      .classList.toggle("hidden", !supportsInnerShape);
+    setGroupVisibility("entityLineStyleGroup", !isIndividual);
+    setGroupVisibility("entityFillGroup", !isIndividual);
+    setGroupVisibility("entityCrossedOutGroup", !isIndividual);
+    setGroupVisibility("entityMultipleIndividualsGroup", isIndividual);
+    setGroupVisibility("entityInnerLineStyleGroup", !isIndividual && supportsInnerShape);
+    setGroupVisibility("entityInnerFillGroup", !isIndividual && supportsInnerShape);
   } else if (edge) {
     selectionType.textContent = "Relationship selected";
     document.getElementById("edgeLabel").value = edge.label;
@@ -500,51 +733,186 @@ function renderInspector() {
     document.getElementById("edgeKind").value = edge.kind;
     document.getElementById("edgeColor").value = edge.color || "black";
     document.getElementById("edgeLineStyle").value = edge.lineStyle || "solid";
+    document.getElementById("edgeBidirectional").checked = Boolean(edge.bidirectional);
     document.getElementById("reverseEdge").disabled = edge.kind !== "transaction";
-    document.getElementById("entityInnerLineStyleGroup").classList.add("hidden");
-    document.getElementById("entityInnerFillGroup").classList.add("hidden");
+    document
+      .getElementById("edgeBidirectionalGroup")
+      .classList.toggle("hidden", edge.kind !== "transaction");
+    document.getElementById("entityJurisdictionCustomGroup").classList.add("hidden");
+    setGroupVisibility("entityLineStyleGroup", false);
+    setGroupVisibility("entityFillGroup", false);
+    setGroupVisibility("entityCrossedOutGroup", false);
+    setGroupVisibility("entityMultipleIndividualsGroup", false);
+    setGroupVisibility("entityInnerLineStyleGroup", false);
+    setGroupVisibility("entityInnerFillGroup", false);
   } else {
     selectionType.textContent = "Nothing selected";
     document.getElementById("reverseEdge").disabled = true;
-    document.getElementById("entityInnerLineStyleGroup").classList.add("hidden");
-    document.getElementById("entityInnerFillGroup").classList.add("hidden");
+    document.getElementById("edgeBidirectionalGroup").classList.add("hidden");
+    document.getElementById("entityJurisdictionCustomGroup").classList.add("hidden");
+    setGroupVisibility("entityLineStyleGroup", false);
+    setGroupVisibility("entityFillGroup", false);
+    setGroupVisibility("entityCrossedOutGroup", false);
+    setGroupVisibility("entityMultipleIndividualsGroup", false);
+    setGroupVisibility("entityInnerLineStyleGroup", false);
+    setGroupVisibility("entityInnerFillGroup", false);
+  }
+
+  if (!node && !edge && state.selectedNodeIds.length > 1) {
+    selectionType.textContent = `${state.selectedNodeIds.length} entities selected`;
   }
 }
 
-function renderLists() {
-  diagramStats.textContent = `${state.nodes.length} entities / ${state.edges.length} relationships`;
+function renderCanvasBackdrop() {
+  const background = document.createElementNS(svgNs, "rect");
+  background.classList.add("canvas-background");
+  background.setAttribute("x", "0");
+  background.setAttribute("y", "0");
+  background.setAttribute("width", String(VIEWBOX.width));
+  background.setAttribute("height", String(VIEWBOX.height));
+  background.setAttribute("fill", "#fffaf5");
+  background.setAttribute("pointer-events", "none");
+  canvas.appendChild(background);
 
-  entityList.innerHTML = "";
-  state.nodes.forEach((node) => {
-    const button = document.createElement("button");
-    button.className = "secondary-button";
-    if (isSelected("node", node.id)) button.classList.add("active");
-    button.textContent = `${node.label} · ${getType(node.type).shortLabel}`;
-    button.addEventListener("click", () => {
-      state.selection = { kind: "node", id: node.id };
-      render();
-    });
-    entityList.appendChild(button);
+  const grid = document.createElementNS(svgNs, "rect");
+  grid.classList.add("canvas-grid");
+  grid.setAttribute("x", "0");
+  grid.setAttribute("y", "0");
+  grid.setAttribute("width", String(VIEWBOX.width));
+  grid.setAttribute("height", String(VIEWBOX.height));
+  grid.setAttribute("fill", "url(#canvasGridPattern)");
+  grid.setAttribute("pointer-events", "none");
+  canvas.appendChild(grid);
+}
+
+function setGroupVisibility(id, visible) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.toggle("hidden", !visible);
+  element.style.display = visible ? "" : "none";
+}
+
+function selectedNodeIdsInRect(rect) {
+  return state.nodes
+    .filter((node) => {
+      const nodeLeft = node.x;
+      const nodeTop = node.y;
+      const nodeRight = node.x + BOX.width;
+      const nodeBottom = node.y + BOX.height;
+      return (
+        nodeLeft >= rect.x &&
+        nodeTop >= rect.y &&
+        nodeRight <= rect.x + rect.width &&
+        nodeBottom <= rect.y + rect.height
+      );
+    })
+    .map((node) => node.id);
+}
+
+function hasJurisdictionDisplay(node) {
+  const jurisdiction = getJurisdictionDisplay(node);
+  return Boolean(jurisdiction.flag || jurisdiction.customText);
+}
+
+function getJurisdictionDisplay(node) {
+  const normalizedValue = (node.jurisdiction || "").trim();
+  const normalizedCustom = (node.jurisdictionCustom || "").trim();
+
+  if (node.jurisdictionMode === "custom") {
+    return {
+      mode: "custom",
+      value: "__custom__",
+      flag: "",
+      customText: normalizedCustom || normalizedValue,
+    };
+  }
+
+  const matched = matchJurisdictionOption(normalizedValue);
+  if (matched) {
+    return {
+      mode: "flag",
+      value: matched.value,
+      flag: matched.flag,
+      customText: "",
+    };
+  }
+
+  if (normalizedCustom || normalizedValue) {
+    return {
+      mode: "custom",
+      value: "__custom__",
+      flag: "",
+      customText: normalizedCustom || normalizedValue,
+    };
+  }
+
+  return {
+    mode: "",
+    value: "",
+    flag: "",
+    customText: "",
+  };
+}
+
+function matchJurisdictionOption(value) {
+  if (!value) return null;
+  const lowered = value.toLowerCase();
+  return (
+    JURISDICTION_OPTIONS.find(
+      (option) =>
+        option.value &&
+        option.value !== "__custom__" &&
+        (option.value.toLowerCase() === lowered || option.label.toLowerCase() === lowered),
+    ) || null
+  );
+}
+
+function renderJurisdiction(group, node, layout = {}) {
+  const jurisdiction = getJurisdictionDisplay(node);
+  if (!jurisdiction.flag && !jurisdiction.customText) return;
+
+  const text = document.createElementNS(svgNs, "text");
+  text.classList.add("entity-jurisdiction");
+  text.setAttribute("x", BOX.width / 2);
+  const lastLineY = layout.lastLineY ?? (node.type === "individual" ? BOX.height + 20 : BOX.height / 2);
+  text.setAttribute("y", lastLineY + 28);
+  text.setAttribute("text-anchor", "middle");
+  text.textContent = jurisdiction.flag || jurisdiction.customText;
+  group.appendChild(text);
+}
+
+function wrapEntityLabel(node) {
+  const words = String(node.label || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return [node.label || ""];
+
+  const maxChars = entityLabelMaxChars(node.type);
+  const lines = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (!currentLine || candidate.length <= maxChars) {
+      currentLine = candidate;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
   });
 
-  edgeList.innerHTML = "";
-  state.edges.forEach((edge) => {
-    const from = state.nodes.find((node) => node.id === edge.from);
-    const to = state.nodes.find((node) => node.id === edge.to);
-    if (!from || !to) return;
-    const button = document.createElement("button");
-    button.className = "secondary-button";
-    if (isSelected("edge", edge.id)) button.classList.add("active");
-    const label = edge.kind === "ownership"
-      ? [edge.percent, edge.label].filter(Boolean).join(" · ")
-      : edge.label || "Transaction";
-    button.textContent = `${from.label} → ${to.label} · ${label}`;
-    button.addEventListener("click", () => {
-      state.selection = { kind: "edge", id: edge.id };
-      render();
-    });
-    edgeList.appendChild(button);
-  });
+  if (currentLine) lines.push(currentLine);
+
+  if (lines.length === 1 && node.label.length > maxChars && words.length === 2) {
+    return words;
+  }
+
+  return lines;
+}
+
+function entityLabelMaxChars(type) {
+  if (type === "partnership") return 11;
+  if (type === "trust") return 12;
+  if (type === "individual") return 14;
+  return 15;
 }
 
 function renderControls() {
@@ -561,6 +929,95 @@ function renderControls() {
       ? ` Waiting for second entity.`
       : "";
   modeStatus.innerHTML = `Current mode: <strong>${modeMap[state.mode]}</strong>.${waitingText}`;
+  document.getElementById("zoomLevel").textContent = `${Math.round(state.zoom * 100)}%`;
+  document.getElementById("transactionLegendEnabled").checked = state.transactionLegend.enabled;
+  document.getElementById("transactionLegendArrowEnd").value = state.transactionLegend.arrowEndText || "";
+  document.getElementById("transactionLegendNonArrowEnd").value =
+    state.transactionLegend.nonArrowEndText || "";
+  document
+    .getElementById("transactionLegendArrowEndGroup")
+    .classList.toggle("hidden", !state.transactionLegend.enabled);
+  document
+    .getElementById("transactionLegendNonArrowEndGroup")
+    .classList.toggle("hidden", !state.transactionLegend.enabled);
+}
+
+function setZoom(nextZoom) {
+  const clamped = Math.max(0.5, Math.min(2, Math.round(nextZoom * 10) / 10));
+  if (clamped === state.zoom) return;
+  state.zoom = clamped;
+  render();
+}
+
+function renderTransactionLegend() {
+  if (!state.transactionLegend.enabled) return;
+  const arrowText = (state.transactionLegend.arrowEndText || "").trim();
+  const nonArrowText = (state.transactionLegend.nonArrowEndText || "").trim();
+  if (!arrowText && !nonArrowText) return;
+
+  const group = document.createElementNS(svgNs, "g");
+  group.classList.add("transaction-legend");
+  const boxX = state.transactionLegend.x || 70;
+  const boxY = state.transactionLegend.y || 760;
+  const boxWidth = 340;
+  const boxHeight = 96;
+  const startX = boxX + 20;
+  const endX = boxX + boxWidth - 20;
+  const y = boxY + 64;
+
+  const hitbox = document.createElementNS(svgNs, "rect");
+  hitbox.classList.add("legend-hitbox");
+  hitbox.setAttribute("x", boxX);
+  hitbox.setAttribute("y", boxY);
+  hitbox.setAttribute("width", boxWidth);
+  hitbox.setAttribute("height", boxHeight);
+  group.appendChild(hitbox);
+
+  const border = document.createElementNS(svgNs, "rect");
+  border.classList.add("legend-box");
+  border.setAttribute("x", boxX);
+  border.setAttribute("y", boxY);
+  border.setAttribute("width", boxWidth);
+  border.setAttribute("height", boxHeight);
+  group.appendChild(border);
+
+  const title = document.createElementNS(svgNs, "text");
+  title.classList.add("legend-title");
+  title.setAttribute("x", boxX + 20);
+  title.setAttribute("y", boxY + 24);
+  title.textContent = "Legend";
+  group.appendChild(title);
+
+  const line = document.createElementNS(svgNs, "line");
+  line.classList.add("legend-line");
+  line.setAttribute("x1", startX);
+  line.setAttribute("y1", y);
+  line.setAttribute("x2", endX);
+  line.setAttribute("y2", y);
+  line.setAttribute("marker-end", "url(#transactionArrow-black)");
+  group.appendChild(line);
+
+  if (nonArrowText) {
+    const leftText = document.createElementNS(svgNs, "text");
+    leftText.classList.add("legend-label");
+    leftText.setAttribute("x", startX);
+    leftText.setAttribute("y", y - 10);
+    leftText.setAttribute("text-anchor", "start");
+    leftText.textContent = nonArrowText;
+    group.appendChild(leftText);
+  }
+
+  if (arrowText) {
+    const rightText = document.createElementNS(svgNs, "text");
+    rightText.classList.add("legend-label");
+    rightText.setAttribute("x", endX);
+    rightText.setAttribute("y", y - 10);
+    rightText.setAttribute("text-anchor", "end");
+    rightText.textContent = arrowText;
+    group.appendChild(rightText);
+  }
+
+  canvas.appendChild(group);
 }
 
 function getType(typeKey) {
@@ -618,9 +1075,10 @@ function applyEntityStyles(shape, node) {
   });
 }
 
-function createEntityShape(typeKey) {
+function createEntityShape(node) {
+  const typeKey = typeof node === "string" ? node : node.type;
   if (typeKey === "individual") {
-    return createIndividualShape();
+    return createIndividualShape(node);
   }
 
   if (typeKey === "trust") {
@@ -688,55 +1146,81 @@ function createTrustShape() {
   return ellipse;
 }
 
-function createIndividualShape() {
+function createIndividualShape(node) {
+  if (node?.multipleIndividuals) {
+    return createMultipleIndividualsShape();
+  }
+
+  return createSingleIndividualShape();
+}
+
+function createSingleIndividualShape() {
   const group = document.createElementNS(svgNs, "g");
+  addStickFigure(group, BOX.width / 2, 6, 1);
+  return group;
+}
+
+function createMultipleIndividualsShape() {
+  const group = document.createElementNS(svgNs, "g");
+  addStickFigure(group, BOX.width / 2 - 24, 13, 0.78);
+  addStickFigure(group, BOX.width / 2 + 24, 13, 0.78);
+  addStickFigure(group, BOX.width / 2, 5, 0.95);
+  return group;
+}
+
+function addStickFigure(group, centerX, topY, scale = 1) {
+  const headRadius = 10 * scale;
+  const headCy = topY + headRadius;
+  const neckY = headCy + headRadius;
+  const waistY = neckY + 20 * scale;
+  const armHalfWidth = 18 * scale;
+  const legOffset = 16 * scale;
+  const footY = waistY + 18 * scale;
 
   const head = document.createElementNS(svgNs, "circle");
-  head.classList.add("entity-rect");
-  head.setAttribute("cx", BOX.width / 2);
-  head.setAttribute("cy", 22);
-  head.setAttribute("r", 16);
+  head.classList.add("entity-rect", "individual-stroke");
+  head.setAttribute("cx", centerX);
+  head.setAttribute("cy", headCy);
+  head.setAttribute("r", headRadius);
   head.setAttribute("fill", "none");
   head.setAttribute("stroke", "#514236");
   group.appendChild(head);
 
   const body = document.createElementNS(svgNs, "line");
-  body.classList.add("entity-rect");
-  body.setAttribute("x1", BOX.width / 2);
-  body.setAttribute("y1", 38);
-  body.setAttribute("x2", BOX.width / 2);
-  body.setAttribute("y2", 74);
+  body.classList.add("entity-rect", "individual-stroke");
+  body.setAttribute("x1", centerX);
+  body.setAttribute("y1", neckY);
+  body.setAttribute("x2", centerX);
+  body.setAttribute("y2", waistY);
   body.setAttribute("stroke", "#514236");
   group.appendChild(body);
 
   const arms = document.createElementNS(svgNs, "line");
-  arms.classList.add("entity-rect");
-  arms.setAttribute("x1", BOX.width / 2 - 26);
-  arms.setAttribute("y1", 50);
-  arms.setAttribute("x2", BOX.width / 2 + 26);
-  arms.setAttribute("y2", 50);
+  arms.classList.add("entity-rect", "individual-stroke");
+  arms.setAttribute("x1", centerX - armHalfWidth);
+  arms.setAttribute("y1", neckY + 8 * scale);
+  arms.setAttribute("x2", centerX + armHalfWidth);
+  arms.setAttribute("y2", neckY + 8 * scale);
   arms.setAttribute("stroke", "#514236");
   group.appendChild(arms);
 
   const leftLeg = document.createElementNS(svgNs, "line");
-  leftLeg.classList.add("entity-rect");
-  leftLeg.setAttribute("x1", BOX.width / 2);
-  leftLeg.setAttribute("y1", 74);
-  leftLeg.setAttribute("x2", BOX.width / 2 - 22);
-  leftLeg.setAttribute("y2", BOX.height - 6);
+  leftLeg.classList.add("entity-rect", "individual-stroke");
+  leftLeg.setAttribute("x1", centerX);
+  leftLeg.setAttribute("y1", waistY);
+  leftLeg.setAttribute("x2", centerX - legOffset);
+  leftLeg.setAttribute("y2", footY);
   leftLeg.setAttribute("stroke", "#514236");
   group.appendChild(leftLeg);
 
   const rightLeg = document.createElementNS(svgNs, "line");
-  rightLeg.classList.add("entity-rect");
-  rightLeg.setAttribute("x1", BOX.width / 2);
-  rightLeg.setAttribute("y1", 74);
-  rightLeg.setAttribute("x2", BOX.width / 2 + 22);
-  rightLeg.setAttribute("y2", BOX.height - 6);
+  rightLeg.classList.add("entity-rect", "individual-stroke");
+  rightLeg.setAttribute("x1", centerX);
+  rightLeg.setAttribute("y1", waistY);
+  rightLeg.setAttribute("x2", centerX + legOffset);
+  rightLeg.setAttribute("y2", footY);
   rightLeg.setAttribute("stroke", "#514236");
   group.appendChild(rightLeg);
-
-  return group;
 }
 
 function createTriangleShape() {
@@ -751,6 +1235,35 @@ function createTriangleShape() {
   return polygon;
 }
 
+function createCrossOverlay(node) {
+  const group = document.createElementNS(svgNs, "g");
+  const overshootX = node.type === "partnership" ? 10 : 8;
+  const overshootY = node.type === "trust" ? 10 : 8;
+
+  const slashA = document.createElementNS(svgNs, "line");
+  slashA.classList.add("entity-rect", "entity-cross-line");
+  slashA.setAttribute("x1", -overshootX);
+  slashA.setAttribute("y1", -overshootY);
+  slashA.setAttribute("x2", BOX.width + overshootX);
+  slashA.setAttribute("y2", BOX.height + overshootY);
+  slashA.setAttribute("stroke", "#514236");
+  slashA.setAttribute("stroke-dasharray", "10 7");
+  slashA.setAttribute("stroke-linecap", "round");
+  group.appendChild(slashA);
+
+  const slashB = document.createElementNS(svgNs, "line");
+  slashB.classList.add("entity-rect", "entity-cross-line");
+  slashB.setAttribute("x1", BOX.width + overshootX);
+  slashB.setAttribute("y1", -overshootY);
+  slashB.setAttribute("x2", -overshootX);
+  slashB.setAttribute("y2", BOX.height + overshootY);
+  slashB.setAttribute("stroke", "#514236");
+  slashB.setAttribute("stroke-dasharray", "10 7");
+  slashB.setAttribute("stroke-linecap", "round");
+  group.appendChild(slashB);
+  return group;
+}
+
 function edgeColorValue(color) {
   if (color === "red") return "#b0392f";
   if (color === "blue") return "#245ea8";
@@ -758,10 +1271,14 @@ function edgeColorValue(color) {
 }
 
 function isSelected(kind, id) {
+  if (kind === "node") {
+    return state.selectedNodeIds.includes(id) || (state.selection?.kind === kind && state.selection?.id === id);
+  }
   return state.selection?.kind === kind && state.selection?.id === id;
 }
 
 function getSelectedNode() {
+  if (state.selectedNodeIds.length > 1) return null;
   return state.selection?.kind === "node"
     ? state.nodes.find((node) => node.id === state.selection.id)
     : null;
@@ -774,10 +1291,18 @@ function getSelectedEdge() {
 }
 
 function deleteSelectedEntity() {
-  const node = getSelectedNode();
-  if (!node) return;
-  state.nodes = state.nodes.filter((candidate) => candidate.id !== node.id);
-  state.edges = state.edges.filter((edge) => edge.from !== node.id && edge.to !== node.id);
+  const idsToDelete =
+    state.selectedNodeIds.length > 0
+      ? new Set(state.selectedNodeIds)
+      : getSelectedNode()
+        ? new Set([getSelectedNode().id])
+        : null;
+  if (!idsToDelete || idsToDelete.size === 0) return;
+  state.nodes = state.nodes.filter((candidate) => !idsToDelete.has(candidate.id));
+  state.edges = state.edges.filter(
+    (edge) => !idsToDelete.has(edge.from) && !idsToDelete.has(edge.to),
+  );
+  state.selectedNodeIds = [];
   state.selection = null;
   render();
 }
@@ -786,6 +1311,7 @@ function deleteSelectedEdge() {
   const edge = getSelectedEdge();
   if (!edge) return;
   state.edges = state.edges.filter((candidate) => candidate.id !== edge.id);
+  state.selectedNodeIds = [];
   state.selection = null;
   render();
 }
@@ -802,8 +1328,19 @@ function reverseSelectedEdge() {
 function clearBoard() {
   state.nodes = [];
   state.edges = [];
+  state.transactionLegend = {
+    enabled: false,
+    arrowEndText: "",
+    nonArrowEndText: "",
+    x: 70,
+    y: 760,
+  };
   state.selection = null;
+  state.selectedNodeIds = [];
   state.pendingConnection = null;
+  state.legendDrag = null;
+  state.pan = null;
+  state.marquee = null;
   state.nextNodeId = 1;
   state.nextEdgeId = 1;
   render();
@@ -821,12 +1358,60 @@ function autoLayout() {
 
 function handleCanvasBlankClick(event) {
   if (event.target === canvas && state.mode === "select") {
+    if (state.suppressBlankClick) {
+      state.suppressBlankClick = false;
+      return;
+    }
+    state.selectedNodeIds = [];
     state.selection = null;
     render();
   }
 }
 
 function handleCanvasMouseDown(event) {
+  const legendGroup = event.target.closest(".transaction-legend");
+  if (legendGroup) {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = svgPoint(event);
+    state.legendDrag = {
+      offsetX: point.x - state.transactionLegend.x,
+      offsetY: point.y - state.transactionLegend.y,
+    };
+    return;
+  }
+
+  if (state.mode === "select" && event.target === canvas) {
+    if (event.shiftKey) {
+      const point = svgPoint(event);
+      state.marquee = {
+        start: point,
+        rect: { x: point.x, y: point.y, width: 0, height: 0 },
+        moved: false,
+      };
+      state.selection = null;
+      state.selectedNodeIds = [];
+      render();
+    } else {
+      const hadMultiSelection = state.selectedNodeIds.length > 1;
+      state.selectedNodeIds = [];
+      state.selection = null;
+      if (hadMultiSelection) {
+        render();
+      }
+      event.preventDefault();
+      state.pan = {
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startScrollLeft: canvasCard.scrollLeft,
+        startScrollTop: canvasCard.scrollTop,
+        moved: false,
+      };
+      canvasCard.classList.add("panning");
+    }
+    return;
+  }
+
   const labelGroup = event.target.closest(".ownership-label-group");
   if (labelGroup) {
     event.preventDefault();
@@ -887,10 +1472,24 @@ function handleCanvasMouseDown(event) {
   if (!node) return;
 
   const point = svgPoint(event);
+  const dragNodeIds =
+    state.mode === "select" && state.selectedNodeIds.length > 1 && state.selectedNodeIds.includes(nodeId)
+      ? [...state.selectedNodeIds]
+      : [nodeId];
+
+  if (state.mode === "select" && dragNodeIds.length === 1 && !state.selectedNodeIds.includes(nodeId)) {
+    state.selectedNodeIds = [nodeId];
+    state.selection = { kind: "node", id: nodeId };
+  }
+
   state.drag = {
     nodeId,
-    offsetX: point.x - node.x,
-    offsetY: point.y - node.y,
+    nodeIds: dragNodeIds,
+    startPoint: point,
+    origins: dragNodeIds.map((id) => {
+      const dragNode = state.nodes.find((candidate) => candidate.id === id);
+      return { id, x: dragNode.x, y: dragNode.y };
+    }),
     startX: node.x,
     startY: node.y,
     moved: false,
@@ -899,6 +1498,49 @@ function handleCanvasMouseDown(event) {
 
 function handleCanvasMouseMove(event) {
   syncCanvasMetrics();
+
+  if (state.pan) {
+    const deltaX = event.clientX - state.pan.startClientX;
+    const deltaY = event.clientY - state.pan.startClientY;
+    canvasCard.scrollLeft = state.pan.startScrollLeft - deltaX;
+    canvasCard.scrollTop = state.pan.startScrollTop - deltaY;
+    state.pan.moved = Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3;
+    return;
+  }
+
+  if (state.legendDrag) {
+    const LEGEND_BOX = { width: 340, height: 96 };
+    const point = svgPoint(event);
+    state.transactionLegend.x = clampLegendPosition(
+      point.x - state.legendDrag.offsetX,
+      LEGEND_BOX.width,
+      VIEWBOX.width,
+    );
+    state.transactionLegend.y = clampLegendPosition(
+      point.y - state.legendDrag.offsetY,
+      LEGEND_BOX.height,
+      VIEWBOX.height,
+    );
+    render();
+    return;
+  }
+
+  if (state.marquee) {
+    const point = svgPoint(event);
+    const x = Math.min(state.marquee.start.x, point.x);
+    const y = Math.min(state.marquee.start.y, point.y);
+    const width = Math.abs(point.x - state.marquee.start.x);
+    const height = Math.abs(point.y - state.marquee.start.y);
+    state.marquee.rect = { x, y, width, height };
+    state.marquee.moved = width > 3 || height > 3;
+    state.selectedNodeIds = selectedNodeIdsInRect(state.marquee.rect);
+    state.selection =
+      state.selectedNodeIds.length === 1
+        ? { kind: "node", id: state.selectedNodeIds[0] }
+        : null;
+    render();
+    return;
+  }
 
   if (state.labelDrag) {
     const edge = state.edges.find((candidate) => candidate.id === state.labelDrag.edgeId);
@@ -937,20 +1579,55 @@ function handleCanvasMouseMove(event) {
   }
 
   if (!state.drag) return;
-  const node = state.nodes.find((candidate) => candidate.id === state.drag.nodeId);
-  if (!node) return;
   const point = svgPoint(event);
-  const rawX = Math.max(20, point.x - state.drag.offsetX);
-  const rawY = Math.max(20, point.y - state.drag.offsetY);
-  node.x = snapToGrid(rawX);
-  node.y = snapToGrid(rawY);
-  const movedX = Math.abs(node.x - state.drag.startX);
-  const movedY = Math.abs(node.y - state.drag.startY);
+  const deltaX = point.x - state.drag.startPoint.x;
+  const deltaY = point.y - state.drag.startPoint.y;
+  const primaryOrigin = state.drag.origins.find((item) => item.id === state.drag.nodeId);
+  if (!primaryOrigin) return;
+  const snappedDeltaX = snapToGrid(primaryOrigin.x + deltaX) - primaryOrigin.x;
+  const snappedDeltaY = snapToGrid(primaryOrigin.y + deltaY) - primaryOrigin.y;
+  state.drag.origins.forEach((origin) => {
+    const dragNode = state.nodes.find((candidate) => candidate.id === origin.id);
+    if (!dragNode) return;
+    dragNode.x = Math.max(20, origin.x + snappedDeltaX);
+    dragNode.y = Math.max(20, origin.y + snappedDeltaY);
+  });
+  const movedX = Math.abs(snappedDeltaX);
+  const movedY = Math.abs(snappedDeltaY);
   state.drag.moved = movedX > 3 || movedY > 3;
   render();
 }
 
 function handleCanvasMouseUp() {
+  if (state.pan) {
+    state.suppressBlankClick = state.pan.moved;
+    state.pan = null;
+    canvasCard.classList.remove("panning");
+    return;
+  }
+
+  if (state.legendDrag) {
+    state.legendDrag = null;
+    render();
+    return;
+  }
+
+  if (state.marquee) {
+    const moved = state.marquee.moved;
+    if (!moved) {
+      state.selectedNodeIds = [];
+      state.selection = null;
+    } else if (state.selectedNodeIds.length === 1) {
+      state.selection = { kind: "node", id: state.selectedNodeIds[0] };
+    } else {
+      state.selection = null;
+    }
+    state.suppressBlankClick = moved;
+    state.marquee = null;
+    render();
+    return;
+  }
+
   if (state.labelDrag) {
     const edgeId = state.labelDrag.edgeId;
     state.labelDrag = null;
@@ -1057,7 +1734,8 @@ function transactionGeometry(edge, from, to, ownershipSegments) {
           ? "to"
           : "other",
   }));
-  const bendVariants = [0, -70, 70, -140, 140, -220, 220];
+  const bendVariants = [0, -36, 36, -72, 72, -108, 108];
+  const preferredSides = edge.routeSides || null;
 
   fromAnchors.forEach((fromAnchor) => {
     toAnchors.forEach((toAnchor) => {
@@ -1069,6 +1747,7 @@ function transactionGeometry(edge, from, to, ownershipSegments) {
           ownershipSegments,
           siblingOffset,
           obstacleNodes,
+          preferredSides,
           bendBias,
         );
         if (candidate) candidates.push(candidate);
@@ -1077,7 +1756,11 @@ function transactionGeometry(edge, from, to, ownershipSegments) {
   });
 
   candidates.sort((a, b) => a.score - b.score);
-  return candidates[0] || fallbackTransactionGeometry(from, to);
+  const best = candidates[0] || fallbackTransactionGeometry(from, to);
+  if (best.fromSide && best.toSide) {
+    edge.routeSides = { from: best.fromSide, to: best.toSide };
+  }
+  return best;
 }
 
 function fallbackTransactionGeometry(from, to) {
@@ -1101,7 +1784,7 @@ function transactionSiblingOffset(edge) {
   const index = siblings.findIndex((candidate) => candidate.id === edge.id);
   if (index === -1) return 0;
 
-  const spacing = 44;
+  const spacing = 30;
   const centeredIndex = index - (siblings.length - 1) / 2;
   return centeredIndex * spacing;
 }
@@ -1151,14 +1834,15 @@ function buildTransactionCandidate(
   ownershipSegments,
   siblingOffset,
   obstacleNodes,
+  preferredSides,
   bendBias = 0,
 ) {
   const dx = toAnchor.point.x - fromAnchor.point.x;
   const dy = toAnchor.point.y - fromAnchor.point.y;
-  const controlDistance = Math.max(54, Math.min(120, Math.hypot(dx, dy) * 0.35));
+  const controlDistance = Math.max(40, Math.min(84, Math.hypot(dx, dy) * 0.24));
   const normalLength = Math.hypot(dx, dy) || 1;
   const normal = { x: -dy / normalLength, y: dx / normalLength };
-  const totalBend = siblingOffset + bendBias;
+  const totalBend = Math.max(-140, Math.min(140, siblingOffset + bendBias));
   const offsetVector = { x: normal.x * totalBend, y: normal.y * totalBend };
   const startPoint = {
     x: fromAnchor.point.x,
@@ -1179,6 +1863,11 @@ function buildTransactionCandidate(
   const samples = sampleBezier(startPoint, c1, c2, endPoint, 24);
   const intersections = countIntersections(samples, ownershipSegments);
   const sameSidePenalty = fromAnchor.side === toAnchor.side ? 0 : 18;
+  const routeSidePenalty =
+    preferredSides &&
+    (preferredSides.from !== fromAnchor.side || preferredSides.to !== toAnchor.side)
+      ? 300
+      : 0;
   const ownershipProximityPenalty = proximityPenalty(samples, ownershipSegments);
   const nodeIntersections = countEntityIntersections(samples, obstacleNodes);
   const nodeProximityPenalty = entityProximityPenalty(samples, obstacleNodes);
@@ -1190,12 +1879,16 @@ function buildTransactionCandidate(
     ownershipProximityPenalty * 8 +
     nodeProximityPenalty * 18 +
     sameSidePenalty +
-    Math.abs(bendBias) * 0.1 +
+    routeSidePenalty +
+    Math.abs(totalBend) * 2.2 +
+    Math.abs(bendBias) * 1.2 +
     Math.hypot(dx, dy);
 
   return {
     score,
     path: `M ${startPoint.x} ${startPoint.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${endPoint.x} ${endPoint.y}`,
+    fromSide: fromAnchor.side,
+    toSide: toAnchor.side,
     label: {
       x: labelPoint.x,
       y: labelPoint.y - 14,
@@ -1265,7 +1958,7 @@ function buildOwnershipBranchLevels() {
     const lowerTierChildren = children.filter((child) => child.y > parent.y);
     if (lowerTierChildren.length === 0) return;
 
-    const startY = parent.y + BOX.height;
+    const startY = ownershipParentStartY(parent);
     const nearestChildTop = Math.min(...lowerTierChildren.map((child) => child.y));
     const branchY = startY + (nearestChildTop - startY) / 2;
     levels.set(parentId, branchY);
@@ -1300,7 +1993,7 @@ function ownershipGeometry(edge, from, to, ownershipBranchLevels) {
   const child = renderNodes.child;
   const start = {
     x: parent.x + BOX.width / 2,
-    y: parent.y + BOX.height,
+    y: ownershipParentStartY(parent),
   };
   const end = {
     x: child.x + BOX.width / 2,
@@ -1329,8 +2022,8 @@ function ownershipGeometry(edge, from, to, ownershipBranchLevels) {
   const childBranchDirection = end.x <= start.x ? -1 : 1;
 
   const defaultPlacement = placeLabelOnParentBranch
-    ? { segmentIndex: 0, t: labelTForSegment(points[0], points[1]) }
-    : { segmentIndex: 2, t: labelTForSegment(points[2], points[3]) };
+    ? { segmentIndex: 0, t: labelTForSegment(points[0], points[1]), side: parentBranchDirection }
+    : { segmentIndex: 2, t: labelTForSegment(points[2], points[3]), side: childBranchDirection };
   const placement = edge.labelPlacement || defaultPlacement;
 
   return {
@@ -1342,6 +2035,25 @@ function ownershipGeometry(edge, from, to, ownershipBranchLevels) {
       placeLabelOnParentBranch,
     }),
   };
+}
+
+function ownershipParentStartY(node) {
+  if (node.type !== "individual") {
+    return node.y + BOX.height;
+  }
+
+  const labelLines = wrapEntityLabel(node);
+  const lineHeight = 20;
+  const baseY = BOX.height + 20;
+  const firstLineY = baseY - ((labelLines.length - 1) * lineHeight) / 2;
+  const lastLineY = firstLineY + (labelLines.length - 1) * lineHeight;
+  const jurisdiction = getJurisdictionDisplay(node);
+  const lowerTextY =
+    jurisdiction.flag || jurisdiction.customText
+      ? lastLineY + 28
+      : lastLineY;
+
+  return node.y + lowerTextY + 8;
 }
 
 function getOwnershipRenderNodes(edge, fromNode = null, toNode = null) {
@@ -1401,10 +2113,11 @@ function ownershipLabelPosition(placement, points, directions) {
   };
 
   if (Math.abs(end.x - start.x) < 1) {
-    const branchDirection =
+    const defaultSide =
       segmentIndex === 0
         ? directions.parentBranchDirection
         : directions.childBranchDirection;
+    const branchDirection = placement.side || defaultSide;
     return {
       x: point.x + branchDirection * 12,
       y: point.y,
@@ -1412,9 +2125,10 @@ function ownershipLabelPosition(placement, points, directions) {
     };
   }
 
+  const verticalDirection = placement.side || -1;
   return {
     x: point.x,
-    y: point.y - 8,
+    y: point.y + verticalDirection * 20,
     anchor: "middle",
   };
 }
@@ -1428,9 +2142,19 @@ function closestOwnershipLabelPlacement(point, geometry) {
     const end = geometry.points[index + 1];
     const projection = projectPointToSegment(point, start, end);
     if (!best || projection.distance < best.distance) {
+      const projectedPoint = projection.point;
+      const isVertical = Math.abs(end.x - start.x) < 1;
+      const side = isVertical
+        ? point.x < projectedPoint.x
+          ? -1
+          : 1
+        : point.y < projectedPoint.y
+          ? -1
+          : 1;
       best = {
         segmentIndex: index,
         t: projection.t,
+        side,
         distance: projection.distance,
       };
     }
@@ -1440,6 +2164,7 @@ function closestOwnershipLabelPlacement(point, geometry) {
     ? {
         segmentIndex: best.segmentIndex,
         t: best.t,
+        side: best.side,
       }
     : null;
 }
@@ -1679,10 +2404,30 @@ function parseStatement(statement, entityMap, context) {
   }
 
   const createOwnerMatch = statement.match(
-    /^(?:add|create)\s+(?:a|an)\s+new\s+owner\s+of\s+(.+)$/i,
+    /^(?:add|create)\s+(?:a|an)\s+new\s+owner\s+of\s+(.+?)\s+(?:called|named)\s+(.+)$/i,
   );
   if (createOwnerMatch) {
     const owned = resolveEntityReference(createOwnerMatch[1], entityMap, context);
+    const ownerDescriptor = parseNarrativeEntityDescriptor(createOwnerMatch[2], "corporation");
+    const owner = createNarrativeEntity(
+      ownerDescriptor.typeKey,
+      ownerDescriptor.label || `Owner ${state.nextNodeId}`,
+      entityMap,
+    );
+    createEdge(owner.id, owned.id, "ownership", {
+      preserveDirection: true,
+    });
+    context.pendingOwnerTarget = owned;
+    context.pendingNamedEntity = owner;
+    context.recentEntities = [owner, owned];
+    return;
+  }
+
+  const createOwnerWithoutNameMatch = statement.match(
+    /^(?:add|create)\s+(?:a|an)\s+new\s+owner\s+of\s+(.+)$/i,
+  );
+  if (createOwnerWithoutNameMatch) {
+    const owned = resolveEntityReference(createOwnerWithoutNameMatch[1], entityMap, context);
     const owner = createNarrativePlaceholderEntity("corporation", "Owner", entityMap);
     createEdge(owner.id, owned.id, "ownership", {
       preserveDirection: true,
@@ -1995,6 +2740,16 @@ function createNarrativePlaceholderEntity(typeKey, labelBase, entityMap) {
   return node;
 }
 
+function createNarrativeEntity(typeKey, label, entityMap) {
+  addNode(typeKey, {
+    label: defaultNarrativeLabel(cleanedLabel(label), typeKey),
+    silent: true,
+  });
+  const node = state.nodes[state.nodes.length - 1];
+  registerNarrativeEntity(node, entityMap);
+  return node;
+}
+
 function applyNarrativeType(node, phrase) {
   const inferred = inferTypeFromPhrase(phrase);
   if (inferred === "corporation") {
@@ -2026,7 +2781,16 @@ function resolveEntityReference(rawName, entityMap, context) {
   if ((normalized === "they" || normalized === "them" || normalized === "both") && context.recentEntities.length > 0) {
     return context.recentEntities[0];
   }
-  return findOrCreateEntity(rawName, entityMap);
+  const directKey = entityLookupKey(rawName);
+  if (entityMap.has(directKey)) {
+    return entityMap.get(directKey);
+  }
+  const narrowedReference = extractTargetEntityReference(rawName);
+  const narrowedKey = entityLookupKey(narrowedReference);
+  if (entityMap.has(narrowedKey)) {
+    return entityMap.get(narrowedKey);
+  }
+  return findOrCreateEntity(narrowedReference || rawName, entityMap);
 }
 
 function defaultNarrativeLabel(value, typeKey) {
@@ -2034,7 +2798,7 @@ function defaultNarrativeLabel(value, typeKey) {
   if (lowered === "individual") return "Individual";
   if (lowered === "partnership") return "Partnership";
   if (lowered === "corporation") return "Corporation";
-  if (lowered === "trust") return "Trust";
+  if (lowered === "trust") return "Trust or other Non-Entity";
   if (lowered === "disregarded entity" || lowered === "hybrid entity") {
     return "Disregarded / Hybrid Entity";
   }
@@ -2076,6 +2840,24 @@ function extractExplicitEntityName(value) {
   return "";
 }
 
+function parseNarrativeEntityDescriptor(value, fallbackType = "corporation") {
+  const trimmed = value.trim();
+  const parentheticalMatch = trimmed.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (parentheticalMatch) {
+    const label = cleanedLabel(parentheticalMatch[1]);
+    const typeHint = parentheticalMatch[2].trim();
+    return {
+      label: label || cleanedLabel(trimmed),
+      typeKey: inferTypeFromPhrase(typeHint) || fallbackType,
+    };
+  }
+
+  return {
+    label: cleanedLabel(extractNamedEntity(trimmed)),
+    typeKey: inferTypeFromPhrase(trimmed) || fallbackType,
+  };
+}
+
 function buildNarrativeEntityMap(existingMap = new Map()) {
   state.nodes.forEach((node) => {
     registerNarrativeEntity(node, existingMap);
@@ -2103,6 +2885,21 @@ function normalizeEntityName(value) {
     .replace(/\b(the|a|an)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractTargetEntityReference(value) {
+  let narrowed = value.trim();
+  narrowed = narrowed.replace(/\s+(?:called|named)\s+.+$/i, "");
+  const typeHintMatch = narrowed.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (
+    typeHintMatch &&
+    /\b(corporation|partnership|entity|trust|individual|hybrid|dreg|reverse)\b/i.test(
+      typeHintMatch[2],
+    )
+  ) {
+    narrowed = typeHintMatch[1].trim();
+  }
+  return narrowed.trim();
 }
 
 function entityLookupKey(value) {
@@ -2267,6 +3064,11 @@ function average(values) {
 
 function clampPosition(value, size, max) {
   return Math.max(GRID, Math.min(value, max - size - GRID));
+}
+
+function clampLegendPosition(value, size, max) {
+  const margin = 8;
+  return Math.max(margin, Math.min(value, max - size - margin));
 }
 
 function ownershipCenterX(nodeId, seen = new Set()) {
@@ -2434,6 +3236,9 @@ function serializeDiagramState() {
   return {
     nodes: state.nodes,
     edges: state.edges,
+    workspaceHeight: state.workspaceHeight,
+    zoom: state.zoom,
+    transactionLegend: state.transactionLegend,
     nextNodeId: state.nextNodeId,
     nextEdgeId: state.nextEdgeId,
   };
@@ -2450,13 +3255,26 @@ function applyDiagramState(payload) {
     }
   });
   state.edges = payload.edges || [];
+  state.workspaceHeight = Math.max(900, payload.workspaceHeight || 900);
+  state.zoom = Math.max(0.5, Math.min(2, payload.zoom || 1));
+  applyCanvasDimensions();
+  state.transactionLegend = {
+    enabled: Boolean(payload.transactionLegend?.enabled),
+    arrowEndText: payload.transactionLegend?.arrowEndText || "",
+    nonArrowEndText: payload.transactionLegend?.nonArrowEndText || "",
+    x: payload.transactionLegend?.x ?? 70,
+    y: payload.transactionLegend?.y ?? 760,
+  };
   state.nextNodeId = payload.nextNodeId || state.nodes.length + 1;
   state.nextEdgeId = payload.nextEdgeId || state.edges.length + 1;
   state.selection = null;
+  state.selectedNodeIds = [];
   state.pendingConnection = null;
   state.drag = null;
   state.edgeDrag = null;
   state.labelDrag = null;
+  state.marquee = null;
+  state.suppressBlankClick = false;
   render();
 }
 
@@ -2482,6 +3300,7 @@ function formatSavedAt(value) {
 function exportSvg() {
   const serializer = new XMLSerializer();
   const clone = canvas.cloneNode(true);
+  prepareExportClone(clone);
   inlineExportStyles(clone);
   clone.setAttribute("xmlns", svgNs);
   clone.setAttribute("width", "1400");
@@ -2493,6 +3312,7 @@ function exportSvg() {
 function exportPng() {
   const serializer = new XMLSerializer();
   const clone = canvas.cloneNode(true);
+  prepareExportClone(clone);
   inlineExportStyles(clone);
   clone.setAttribute("xmlns", svgNs);
   clone.setAttribute("width", "1400");
@@ -2507,7 +3327,7 @@ function exportPng() {
     tempCanvas.width = 1400;
     tempCanvas.height = 900;
     const context = tempCanvas.getContext("2d");
-    context.fillStyle = "#f7f1e8";
+    context.fillStyle = "#ffffff";
     context.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     context.drawImage(image, 0, 0);
     tempCanvas.toBlob((blob) => {
@@ -2536,6 +3356,18 @@ function downloadBlob(content, filename, type) {
   URL.revokeObjectURL(url);
 }
 
+function prepareExportClone(clone) {
+  const exportBackground = clone.querySelector(".canvas-background");
+  if (exportBackground) {
+    exportBackground.setAttribute("fill", "#ffffff");
+  }
+
+  const exportGrid = clone.querySelector(".canvas-grid");
+  if (exportGrid) {
+    exportGrid.remove();
+  }
+}
+
 function inlineExportStyles(clone) {
   const originalElements = canvas.querySelectorAll("*");
   const cloneElements = clone.querySelectorAll("*");
@@ -2557,6 +3389,7 @@ function inlineExportStyles(clone) {
       "font-family",
       "font-weight",
       "paint-order",
+      "marker-start",
       "marker-end",
       "opacity",
     ];

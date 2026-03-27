@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260327-1512" />
+    <link rel="stylesheet" href="./styles.css?v=20260327-2115" />
   </head>
   <body>
     <div class="app-shell">
@@ -45,6 +45,18 @@
           <div class="helper-box" id="modeStatus">
             Current mode: <strong>Select</strong>
           </div>
+          <label id="transactionLegendGroup" class="checkbox-label">
+            <span>Add a legend for transaction arrow</span>
+            <input id="transactionLegendEnabled" type="checkbox" />
+          </label>
+          <label id="transactionLegendArrowEndGroup" class="hidden">
+            Text for arrow end
+            <input id="transactionLegendArrowEnd" type="text" placeholder="e.g. Loan principal recipient" />
+          </label>
+          <label id="transactionLegendNonArrowEndGroup" class="hidden">
+            Text for non-arrow end
+            <input id="transactionLegendNonArrowEnd" type="text" placeholder="e.g. Loan principal payor" />
+          </label>
         </div>
 
         <div class="panel-card">
@@ -58,26 +70,14 @@
             placeholder="Example: USP owns 100% of HoldCo. HoldCo owns 100% of US LLC. US LLC sells IP to Foreign Sub. Foreign Sub loans cash to USP."
           ></textarea>
           <div class="action-stack">
+            <button id="applyNarrative" class="secondary-button">Apply Narrative Edits to Existing Diagram</button>
             <button id="generateNarrative" class="primary-button">Generate New Diagram</button>
-            <button id="applyNarrative" class="secondary-button">Apply Narrative Edits</button>
           </div>
           <p class="subtle small">
             Recognizes simple patterns like ownership, sales, loans, distributions, dividends, contributions, renames, and removals.
           </p>
         </div>
 
-        <div class="panel-card">
-          <div class="section-heading">
-            <h2>Save & Export</h2>
-          </div>
-          <div class="action-stack">
-            <button id="saveJson" class="secondary-button">Download JSON</button>
-            <button id="loadJson" class="secondary-button">Load JSON</button>
-            <button id="exportSvg" class="secondary-button">Export SVG</button>
-            <button id="exportPng" class="secondary-button">Export PNG</button>
-            <input id="fileLoader" type="file" accept=".json,application/json" hidden />
-          </div>
-        </div>
       </aside>
 
       <main class="workspace">
@@ -88,6 +88,10 @@
           </div>
           <div class="workspace-actions">
             <button id="saveBrowser" class="secondary-button">Save Current Diagram In Browser</button>
+            <button id="zoomOut" class="secondary-button">Zoom Out</button>
+            <button id="zoomReset" class="secondary-button">100%</button>
+            <button id="zoomIn" class="secondary-button">Zoom In</button>
+            <span id="zoomLevel" class="workspace-meta">100%</span>
             <button id="autoLayout" class="secondary-button">Auto Layout</button>
             <button id="clearBoard" class="secondary-button danger-button">Clear</button>
           </div>
@@ -134,10 +138,26 @@
               >
                 <path d="M1 1 L11.2 6.5 L1 12 z" class="arrow-head arrow-blue"></path>
               </marker>
+              <pattern
+                id="canvasGridPattern"
+                x="0"
+                y="0"
+                width="40"
+                height="40"
+                patternUnits="userSpaceOnUse"
+              >
+                <path
+                  d="M 40 0 L 0 0 0 40"
+                  fill="none"
+                  stroke="#544336"
+                  stroke-opacity="0.08"
+                  stroke-width="1"
+                ></path>
+              </pattern>
             </defs>
           </svg>
           <div class="canvas-overlay">
-            <p>Drag entities to reposition them. Double-click a label in the inspector to refine details.</p>
+            <p>Drag blank space to pan. Hold Shift and drag blank space to multi-select. Drag entities to reposition them.</p>
           </div>
         </div>
       </main>
@@ -173,34 +193,42 @@
             </label>
             <label>
               Jurisdiction
-              <input id="entityJurisdiction" type="text" placeholder="US, DE, Cayman, etc." />
+              <select id="entityJurisdiction"></select>
             </label>
-            <label>
-              Notes
-              <textarea id="entityNotes" rows="4" placeholder="Optional tax or legal notes"></textarea>
+            <label id="entityJurisdictionCustomGroup" class="hidden">
+              Custom Jurisdiction
+              <input id="entityJurisdictionCustom" type="text" placeholder="Type jurisdiction text" />
             </label>
-            <label>
+            <label id="entityMultipleIndividualsGroup" class="hidden checkbox-label">
+              <span>Multiple Individuals</span>
+              <input id="entityMultipleIndividuals" type="checkbox" />
+            </label>
+            <label id="entityLineStyleGroup" class="hidden">
               Line Style
               <select id="entityLineStyle">
                 <option value="solid">Solid</option>
                 <option value="dashed">Dashed</option>
               </select>
             </label>
-            <label>
+            <label id="entityFillGroup" class="hidden">
               Entity Shading
               <select id="entityFill">
                 <option value="none">None</option>
                 <option value="shaded">Shaded</option>
               </select>
             </label>
-            <label id="entityInnerLineStyleGroup">
+            <label id="entityCrossedOutGroup" class="hidden checkbox-label">
+              <span>Add an X (e.g. for liquidation)</span>
+              <input id="entityCrossedOut" type="checkbox" />
+            </label>
+            <label id="entityInnerLineStyleGroup" class="hidden">
               Inner Shape Style
               <select id="entityInnerLineStyle">
                 <option value="solid">Solid</option>
                 <option value="dashed">Dashed</option>
               </select>
             </label>
-            <label id="entityInnerFillGroup">
+            <label id="entityInnerFillGroup" class="hidden">
               Inner Shading
               <select id="entityInnerFill">
                 <option value="none">None</option>
@@ -241,6 +269,10 @@
                 <option value="dashed">Dashed</option>
               </select>
             </label>
+            <label id="edgeBidirectionalGroup" class="checkbox-label hidden">
+              <span>Arrow On Both Ends</span>
+              <input id="edgeBidirectional" type="checkbox" />
+            </label>
             <button id="reverseEdge" type="button" class="secondary-button">Reverse Arrow</button>
             <button id="deleteEdge" type="button" class="danger-button">Delete Relationship</button>
           </form>
@@ -248,21 +280,17 @@
 
         <div class="panel-card">
           <div class="section-heading">
-            <h2>Diagram Contents</h2>
-            <span id="diagramStats">0 entities / 0 relationships</span>
+            <h2>Export and Save</h2>
           </div>
-          <div class="list-section">
-            <h3>Entities</h3>
-            <div id="entityList" class="mini-list"></div>
-          </div>
-          <div class="list-section">
-            <h3>Relationships</h3>
-            <div id="edgeList" class="mini-list"></div>
+          <div class="action-stack">
+            <button id="exportSvg" class="secondary-button">Export SVG (sharp when resized)</button>
+            <button id="exportPng" class="secondary-button">Export PNG (easy to share)</button>
           </div>
         </div>
+
       </aside>
     </div>
 
-    <script src="./app.js?v=20260327-1512"></script>
+    <script src="./app.js?v=20260327-2645"></script>
   </body>
 </html>
