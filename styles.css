@@ -1,0 +1,436 @@
+:root {
+  --bg: #f4efe6;
+  --panel: rgba(255, 251, 245, 0.92);
+  --panel-strong: #fffdf9;
+  --border: rgba(79, 57, 40, 0.14);
+  --text: #23180f;
+  --muted: #6c5a4d;
+  --accent: #9b5b2f;
+  --accent-strong: #6d3712;
+  --teal: #1f6c68;
+  --danger: #ab3b2f;
+  --shadow: 0 24px 60px rgba(60, 34, 17, 0.12);
+  --canvas-grid: rgba(84, 67, 54, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(255, 215, 177, 0.55), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(108, 157, 153, 0.24), transparent 30%),
+    linear-gradient(180deg, #f7f2ea 0%, #efe5d7 100%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 320px;
+  gap: 20px;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.sidebar,
+.workspace {
+  min-height: 0;
+}
+
+.left-panel,
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-card,
+.canvas-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.panel-card {
+  padding: 18px;
+}
+
+.brand-card {
+  background: linear-gradient(145deg, rgba(255, 248, 238, 0.96), rgba(255, 236, 215, 0.9));
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+h1,
+.workspace-header h2 {
+  font-family: "IBM Plex Serif", serif;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.05;
+  margin-bottom: 10px;
+}
+
+h2 {
+  font-size: 1.05rem;
+}
+
+h3 {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.subtle {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.section-heading,
+.workspace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-heading span,
+#selectionType,
+#diagramStats {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.palette-grid,
+.mode-buttons,
+.action-stack,
+.mini-list,
+.editor-form,
+.list-section {
+  display: grid;
+  gap: 10px;
+}
+
+.palette-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.palette-button,
+.tool-button,
+.primary-button,
+.secondary-button,
+.danger-button {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 11px 14px;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.palette-button,
+.tool-button,
+.secondary-button {
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text);
+}
+
+.palette-button:hover,
+.tool-button:hover,
+.primary-button:hover,
+.secondary-button:hover,
+.danger-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(69, 44, 22, 0.1);
+}
+
+.tool-button.active,
+.palette-button:hover {
+  border-color: rgba(109, 55, 18, 0.36);
+  background: rgba(255, 243, 229, 0.96);
+}
+
+.primary-button {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: #fffaf5;
+  border-color: transparent;
+}
+
+.secondary-button {
+  width: 100%;
+}
+
+.danger-button {
+  background: rgba(171, 59, 47, 0.1);
+  color: var(--danger);
+  border-color: rgba(171, 59, 47, 0.16);
+}
+
+.ownership-label-group .edge-label {
+  cursor: move;
+}
+
+textarea,
+input,
+select {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(78, 58, 43, 0.14);
+  background: rgba(255, 255, 255, 0.84);
+  padding: 12px 13px;
+  color: var(--text);
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  outline: 2px solid rgba(109, 55, 18, 0.2);
+  border-color: rgba(109, 55, 18, 0.35);
+}
+
+.helper-box {
+  margin-top: 12px;
+  background: rgba(247, 241, 233, 0.94);
+  border: 1px dashed rgba(90, 64, 44, 0.18);
+  border-radius: 16px;
+  padding: 12px 14px;
+  color: var(--muted);
+}
+
+.compact-helper {
+  margin-top: 0;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workspace-header {
+  padding: 10px 8px 0;
+}
+
+.workspace-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.workspace-actions .secondary-button {
+  width: auto;
+}
+
+.canvas-card {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  min-height: 760px;
+  background:
+    linear-gradient(var(--canvas-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 252, 246, 0.95), rgba(250, 243, 232, 0.95));
+  background-size: 40px 40px, 40px 40px, cover;
+}
+
+#diagramCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-overlay {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(88, 63, 46, 0.12);
+  border-radius: 999px;
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.editor-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.hidden {
+  display: none;
+}
+
+.mini-list {
+  margin-top: 10px;
+}
+
+.mini-list button {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.mini-list button.active {
+  background: rgba(255, 243, 229, 0.96);
+  border-color: rgba(109, 55, 18, 0.3);
+}
+
+.entity-box {
+  cursor: pointer;
+}
+
+.saved-diagram-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(79, 57, 40, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.saved-diagram-meta {
+  min-width: 0;
+}
+
+.saved-diagram-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.saved-diagram-subtitle {
+  margin-top: 3px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.saved-diagram-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.compact-button {
+  width: auto;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 0.82rem;
+}
+
+.entity-box.dragging {
+  opacity: 0.92;
+}
+
+.entity-rect {
+  stroke-width: 2;
+}
+
+.entity-text {
+  font-family: "IBM Plex Sans", sans-serif;
+  fill: #20160f;
+  pointer-events: none;
+}
+
+.entity-type-chip {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  fill: rgba(30, 23, 17, 0.72);
+}
+
+.edge {
+  cursor: pointer;
+}
+
+.edge-line {
+  fill: none;
+  stroke-width: 3;
+}
+
+.edge.black .edge-line {
+  stroke: #1e1a17;
+}
+
+.edge.red .edge-line {
+  stroke: #b0392f;
+}
+
+.edge.blue .edge-line {
+  stroke: #245ea8;
+}
+
+.edge-label {
+  font-size: 14px;
+  fill: #2f261f;
+  paint-order: stroke;
+  stroke: rgba(255, 250, 244, 0.92);
+  stroke-width: 6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.selected .entity-rect,
+.selected .edge-line {
+  stroke: #111;
+  stroke-width: 4;
+}
+
+.arrow-black {
+  fill: #1e1a17;
+}
+
+.arrow-red {
+  fill: #b0392f;
+}
+
+.arrow-blue {
+  fill: #245ea8;
+}
+
+@media (max-width: 1200px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-card {
+    min-height: 560px;
+  }
+}

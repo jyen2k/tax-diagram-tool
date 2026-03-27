@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tax Structure Chart Builder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260327-1512" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar left-panel">
+        <div class="panel-card brand-card">
+          <p class="eyebrow">Tax Diagram Studio</p>
+          <h1>Build legal structure charts.</h1>
+          <p class="subtle">
+            Add entities, connect ownership, sketch transactions, then export a clean diagram.
+          </p>
+          <p class="subtle small">By Jason Yen</p>
+        </div>
+
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Entity Palette</h2>
+            <span>Click to add</span>
+          </div>
+          <div id="entityPalette" class="palette-grid"></div>
+        </div>
+
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Relationships</h2>
+            <span>Select mode, then click two entities</span>
+          </div>
+          <div class="mode-buttons">
+            <button class="tool-button" data-mode="select">Select</button>
+            <button class="tool-button" data-mode="ownership">Ownership Line</button>
+            <button class="tool-button" data-mode="transaction">Transaction Arrow</button>
+          </div>
+          <div class="helper-box" id="modeStatus">
+            Current mode: <strong>Select</strong>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Draft From Narrative</h2>
+            <span>Work in progress</span>
+          </div>
+          <textarea
+            id="narrativeInput"
+            rows="10"
+            placeholder="Example: USP owns 100% of HoldCo. HoldCo owns 100% of US LLC. US LLC sells IP to Foreign Sub. Foreign Sub loans cash to USP."
+          ></textarea>
+          <div class="action-stack">
+            <button id="generateNarrative" class="primary-button">Generate New Diagram</button>
+            <button id="applyNarrative" class="secondary-button">Apply Narrative Edits</button>
+          </div>
+          <p class="subtle small">
+            Recognizes simple patterns like ownership, sales, loans, distributions, dividends, contributions, renames, and removals.
+          </p>
+        </div>
+
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Save & Export</h2>
+          </div>
+          <div class="action-stack">
+            <button id="saveJson" class="secondary-button">Download JSON</button>
+            <button id="loadJson" class="secondary-button">Load JSON</button>
+            <button id="exportSvg" class="secondary-button">Export SVG</button>
+            <button id="exportPng" class="secondary-button">Export PNG</button>
+            <input id="fileLoader" type="file" accept=".json,application/json" hidden />
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div class="workspace-header">
+          <div>
+            <p class="eyebrow">Canvas</p>
+            <h2>Diagram Workspace</h2>
+          </div>
+          <div class="workspace-actions">
+            <button id="saveBrowser" class="secondary-button">Save Current Diagram In Browser</button>
+            <button id="autoLayout" class="secondary-button">Auto Layout</button>
+            <button id="clearBoard" class="secondary-button danger-button">Clear</button>
+          </div>
+        </div>
+
+        <div class="canvas-card">
+          <svg
+            id="diagramCanvas"
+            viewBox="0 0 1400 900"
+            preserveAspectRatio="xMinYMin meet"
+            aria-label="Tax structure chart canvas"
+          >
+            <defs>
+              <marker
+                id="transactionArrow-black"
+                markerWidth="13"
+                markerHeight="13"
+                refX="11"
+                refY="6.5"
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+              >
+                <path d="M1 1 L11.2 6.5 L1 12 z" class="arrow-head arrow-black"></path>
+              </marker>
+              <marker
+                id="transactionArrow-red"
+                markerWidth="13"
+                markerHeight="13"
+                refX="11"
+                refY="6.5"
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+              >
+                <path d="M1 1 L11.2 6.5 L1 12 z" class="arrow-head arrow-red"></path>
+              </marker>
+              <marker
+                id="transactionArrow-blue"
+                markerWidth="13"
+                markerHeight="13"
+                refX="11"
+                refY="6.5"
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+              >
+                <path d="M1 1 L11.2 6.5 L1 12 z" class="arrow-head arrow-blue"></path>
+              </marker>
+            </defs>
+          </svg>
+          <div class="canvas-overlay">
+            <p>Drag entities to reposition them. Double-click a label in the inspector to refine details.</p>
+          </div>
+        </div>
+      </main>
+
+      <aside class="sidebar right-panel">
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Saved Diagrams</h2>
+            <span>Up to 5</span>
+          </div>
+          <div id="savedDiagramList" class="mini-list"></div>
+          <p class="subtle small">
+            Saves stay in this browser on this computer.
+          </p>
+        </div>
+
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Selection</h2>
+            <span id="selectionType">Nothing selected</span>
+          </div>
+          <div id="emptySelection" class="helper-box">
+            Click an entity or relationship to edit it.
+          </div>
+          <form id="entityForm" class="editor-form hidden">
+            <label>
+              Label
+              <input id="entityLabel" type="text" />
+            </label>
+            <label>
+              Entity Type
+              <select id="entityType"></select>
+            </label>
+            <label>
+              Jurisdiction
+              <input id="entityJurisdiction" type="text" placeholder="US, DE, Cayman, etc." />
+            </label>
+            <label>
+              Notes
+              <textarea id="entityNotes" rows="4" placeholder="Optional tax or legal notes"></textarea>
+            </label>
+            <label>
+              Line Style
+              <select id="entityLineStyle">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+              </select>
+            </label>
+            <label>
+              Entity Shading
+              <select id="entityFill">
+                <option value="none">None</option>
+                <option value="shaded">Shaded</option>
+              </select>
+            </label>
+            <label id="entityInnerLineStyleGroup">
+              Inner Shape Style
+              <select id="entityInnerLineStyle">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+              </select>
+            </label>
+            <label id="entityInnerFillGroup">
+              Inner Shading
+              <select id="entityInnerFill">
+                <option value="none">None</option>
+                <option value="shaded">Shaded</option>
+              </select>
+            </label>
+            <button id="deleteEntity" type="button" class="danger-button">Delete Entity</button>
+          </form>
+
+          <form id="edgeForm" class="editor-form hidden">
+            <label>
+              Relationship Label
+              <input id="edgeLabel" type="text" placeholder="Loan, sale, contribution..." />
+            </label>
+            <label>
+              Ownership %
+              <input id="edgePercent" type="text" placeholder="100%" />
+            </label>
+            <label>
+              Style
+              <select id="edgeKind">
+                <option value="ownership">Ownership Line</option>
+                <option value="transaction">Transaction Arrow</option>
+              </select>
+            </label>
+            <label>
+              Color
+              <select id="edgeColor">
+                <option value="black">Black</option>
+                <option value="red">Red</option>
+                <option value="blue">Blue</option>
+              </select>
+            </label>
+            <label>
+              Line Style
+              <select id="edgeLineStyle">
+                <option value="solid">Solid</option>
+                <option value="dashed">Dashed</option>
+              </select>
+            </label>
+            <button id="reverseEdge" type="button" class="secondary-button">Reverse Arrow</button>
+            <button id="deleteEdge" type="button" class="danger-button">Delete Relationship</button>
+          </form>
+        </div>
+
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Diagram Contents</h2>
+            <span id="diagramStats">0 entities / 0 relationships</span>
+          </div>
+          <div class="list-section">
+            <h3>Entities</h3>
+            <div id="entityList" class="mini-list"></div>
+          </div>
+          <div class="list-section">
+            <h3>Relationships</h3>
+            <div id="edgeList" class="mini-list"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script src="./app.js?v=20260327-1512"></script>
+  </body>
+</html>
