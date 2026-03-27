@@ -1,3 +1,4 @@
 {
-  "name": "tax-flow-chart-tool"
+  "name": "tax-flow-chart-tool",
+  "requires_database": true
 }

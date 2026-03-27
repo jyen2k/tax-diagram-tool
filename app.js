@@ -26,10 +26,16 @@ const entityForm = document.getElementById("entityForm");
 const edgeForm = document.getElementById("edgeForm");
 const emptySelection = document.getElementById("emptySelection");
 const narrativeInput = document.getElementById("narrativeInput");
+const feedbackForm = document.getElementById("feedbackForm");
+const feedbackNameInput = document.getElementById("feedbackName");
+const feedbackCommentInput = document.getElementById("feedbackComment");
+const feedbackStatus = document.getElementById("feedbackStatus");
+const feedbackSubmitButton = document.getElementById("submitFeedback");
 
 const state = {
   nodes: [],
   edges: [],
+  workspaceWidth: 1400,
   workspaceHeight: 900,
   zoom: 1,
   transactionLegend: {
@@ -55,7 +61,11 @@ const state = {
   nextEdgeId: 1,
 };
 
-const VIEWBOX = { width: 1400, height: 900 };
+const MIN_WORKSPACE_WIDTH = 1400;
+const MIN_WORKSPACE_HEIGHT = 900;
+const WORKSPACE_EXPAND_MARGIN = 240;
+const WORKSPACE_EXPAND_STEP = 800;
+const VIEWBOX = { width: MIN_WORKSPACE_WIDTH, height: MIN_WORKSPACE_HEIGHT };
 const DISPLAY_GRID = 40;
 const DISPLAY_SNAP_THRESHOLD = 10;
 let GRID = DISPLAY_GRID;
@@ -140,6 +150,7 @@ function init() {
 }
 
 function applyCanvasDimensions() {
+  VIEWBOX.width = state.workspaceWidth;
   VIEWBOX.height = state.workspaceHeight;
   canvas.setAttribute("viewBox", `0 0 ${VIEWBOX.width} ${VIEWBOX.height}`);
   const zoomedWidth = Math.round(VIEWBOX.width * state.zoom);
@@ -148,6 +159,36 @@ function applyCanvasDimensions() {
   canvas.setAttribute("height", String(zoomedHeight));
   canvas.style.width = `${zoomedWidth}px`;
   canvas.style.height = `${zoomedHeight}px`;
+}
+
+function ensureWorkspaceFitsContent() {
+  let requiredWidth = MIN_WORKSPACE_WIDTH;
+  let requiredHeight = MIN_WORKSPACE_HEIGHT;
+
+  state.nodes.forEach((node) => {
+    requiredWidth = Math.max(requiredWidth, node.x + BOX.width + WORKSPACE_EXPAND_MARGIN);
+    requiredHeight = Math.max(requiredHeight, node.y + BOX.height + WORKSPACE_EXPAND_MARGIN);
+  });
+
+  if (state.transactionLegend?.enabled) {
+    requiredWidth = Math.max(
+      requiredWidth,
+      (state.transactionLegend.x || 0) + 340 + WORKSPACE_EXPAND_MARGIN,
+    );
+    requiredHeight = Math.max(
+      requiredHeight,
+      (state.transactionLegend.y || 0) + 96 + WORKSPACE_EXPAND_MARGIN,
+    );
+  }
+
+  state.workspaceWidth = Math.max(
+    MIN_WORKSPACE_WIDTH,
+    Math.ceil(requiredWidth / WORKSPACE_EXPAND_STEP) * WORKSPACE_EXPAND_STEP,
+  );
+  state.workspaceHeight = Math.max(
+    MIN_WORKSPACE_HEIGHT,
+    Math.ceil(requiredHeight / WORKSPACE_EXPAND_STEP) * WORKSPACE_EXPAND_STEP,
+  );
 }
 
 function syncCanvasMetrics() {
@@ -353,6 +394,7 @@ function bindEvents() {
   document.getElementById("zoomIn").addEventListener("click", () => setZoom(state.zoom + 0.1));
   document.getElementById("exportSvg").addEventListener("click", exportSvg);
   document.getElementById("exportPng").addEventListener("click", exportPng);
+  feedbackForm.addEventListener("submit", handleFeedbackSubmit);
   document
     .getElementById("transactionLegendEnabled")
     .addEventListener("change", (event) => {
@@ -520,6 +562,7 @@ function selectEdge(edgeId) {
 }
 
 function render() {
+  ensureWorkspaceFitsContent();
   renderCanvas();
   renderInspector();
   renderSavedDiagrams();
@@ -1052,11 +1095,17 @@ function applyEntityStyles(shape, node) {
   applyLineStyle(shape, node.lineStyle || "solid");
   const outerFill = node.fill === "shaded" ? "#e7e1d6" : "#fffdf9";
 
-    const supportsInnerShape = ["dreg", "hybrid-partnership", "reverse-hybrid"].includes(
-      node.type,
-    );
+  const supportsInnerShape = ["dreg", "hybrid-partnership", "reverse-hybrid"].includes(
+    node.type,
+  );
   if (!supportsInnerShape || !shape.children || shape.children.length === 0) {
-    if (shape.tagName !== "line") {
+    if (shape.children && shape.children.length > 0) {
+      Array.from(shape.children).forEach((child) => {
+        if (child.tagName !== "line") {
+          child.setAttribute("fill", outerFill);
+        }
+      });
+    } else if (shape.tagName !== "line") {
       shape.setAttribute("fill", outerFill);
     }
     return;
@@ -1328,6 +1377,8 @@ function reverseSelectedEdge() {
 function clearBoard() {
   state.nodes = [];
   state.edges = [];
+  state.workspaceWidth = MIN_WORKSPACE_WIDTH;
+  state.workspaceHeight = MIN_WORKSPACE_HEIGHT;
   state.transactionLegend = {
     enabled: false,
     arrowEndText: "",
@@ -2118,9 +2169,19 @@ function ownershipLabelPosition(placement, points, directions) {
         ? directions.parentBranchDirection
         : directions.childBranchDirection;
     const branchDirection = placement.side || defaultSide;
+    let labelY = point.y;
+
+    if (segmentIndex === 0 && point.y < start.y + 28) {
+      labelY += 10;
+    }
+
+    if (segmentIndex !== 0 && point.y > end.y - 28) {
+      labelY -= 10;
+    }
+
     return {
-      x: point.x + branchDirection * 12,
-      y: point.y,
+      x: point.x + branchDirection * 16,
+      y: labelY,
       anchor: branchDirection < 0 ? "end" : "start",
     };
   }
@@ -3236,6 +3297,7 @@ function serializeDiagramState() {
   return {
     nodes: state.nodes,
     edges: state.edges,
+    workspaceWidth: state.workspaceWidth,
     workspaceHeight: state.workspaceHeight,
     zoom: state.zoom,
     transactionLegend: state.transactionLegend,
@@ -3255,7 +3317,8 @@ function applyDiagramState(payload) {
     }
   });
   state.edges = payload.edges || [];
-  state.workspaceHeight = Math.max(900, payload.workspaceHeight || 900);
+  state.workspaceWidth = Math.max(MIN_WORKSPACE_WIDTH, payload.workspaceWidth || MIN_WORKSPACE_WIDTH);
+  state.workspaceHeight = Math.max(MIN_WORKSPACE_HEIGHT, payload.workspaceHeight || MIN_WORKSPACE_HEIGHT);
   state.zoom = Math.max(0.5, Math.min(2, payload.zoom || 1));
   applyCanvasDimensions();
   state.transactionLegend = {
@@ -3298,50 +3361,18 @@ function formatSavedAt(value) {
 }
 
 function exportSvg() {
-  const serializer = new XMLSerializer();
-  const clone = canvas.cloneNode(true);
-  prepareExportClone(clone);
-  inlineExportStyles(clone);
-  clone.setAttribute("xmlns", svgNs);
-  clone.setAttribute("width", "1400");
-  clone.setAttribute("height", "900");
-  const svgString = serializer.serializeToString(clone);
+  const svgString = buildExportSvgString();
   downloadBlob(svgString, "tax-structure-diagram.svg", "image/svg+xml");
 }
 
-function exportPng() {
-  const serializer = new XMLSerializer();
-  const clone = canvas.cloneNode(true);
-  prepareExportClone(clone);
-  inlineExportStyles(clone);
-  clone.setAttribute("xmlns", svgNs);
-  clone.setAttribute("width", "1400");
-  clone.setAttribute("height", "900");
-  const svgString = serializer.serializeToString(clone);
-  const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(svgBlob);
-  const image = new Image();
-
-  image.onload = () => {
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = 1400;
-    tempCanvas.height = 900;
-    const context = tempCanvas.getContext("2d");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    context.drawImage(image, 0, 0);
-    tempCanvas.toBlob((blob) => {
-      downloadBlob(blob, "tax-structure-diagram.png", "image/png");
-      URL.revokeObjectURL(url);
-    });
-  };
-
-  image.onerror = () => {
-    URL.revokeObjectURL(url);
+async function exportPng() {
+  try {
+    const blob = await buildExportPngBlob();
+    downloadBlob(blob, "tax-structure-diagram.png", "image/png");
+  } catch (error) {
+    console.error(error);
     window.alert("PNG export failed in this browser. SVG export is still available.");
-  };
-
-  image.src = url;
+  }
 }
 
 function downloadBlob(content, filename, type) {
@@ -3360,7 +3391,10 @@ function prepareExportClone(clone) {
   const exportBackground = clone.querySelector(".canvas-background");
   if (exportBackground) {
     exportBackground.setAttribute("fill", "#ffffff");
+    exportBackground.style.fill = "#ffffff";
   }
+
+  clone.style.background = "#ffffff";
 
   const exportGrid = clone.querySelector(".canvas-grid");
   if (exportGrid) {
@@ -3406,6 +3440,123 @@ function inlineExportStyles(clone) {
       cloneElement.setAttribute("style", styleParts.join(";"));
     }
   });
+}
+
+function buildExportSvgString() {
+  const serializer = new XMLSerializer();
+  const clone = canvas.cloneNode(true);
+  inlineExportStyles(clone);
+  prepareExportClone(clone);
+  clone.setAttribute("xmlns", svgNs);
+  clone.setAttribute("width", String(VIEWBOX.width));
+  clone.setAttribute("height", String(VIEWBOX.height));
+  clone.setAttribute("viewBox", `0 0 ${VIEWBOX.width} ${VIEWBOX.height}`);
+  return serializer.serializeToString(clone);
+}
+
+function buildExportPngBlob() {
+  return new Promise((resolve, reject) => {
+    const svgString = buildExportSvgString();
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const image = new Image();
+
+    image.onload = () => {
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = VIEWBOX.width;
+      tempCanvas.height = VIEWBOX.height;
+      const context = tempCanvas.getContext("2d");
+      if (!context) {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not create PNG export context."));
+        return;
+      }
+
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      context.drawImage(image, 0, 0);
+      tempCanvas.toBlob((blob) => {
+        URL.revokeObjectURL(url);
+        if (!blob) {
+          reject(new Error("Could not render PNG export."));
+          return;
+        }
+        resolve(blob);
+      }, "image/png");
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not load SVG snapshot into image."));
+    };
+
+    image.src = url;
+  });
+}
+
+function setFeedbackStatus(message, tone = "") {
+  feedbackStatus.textContent = message;
+  feedbackStatus.className = "subtle small feedback-status";
+  if (tone) {
+    feedbackStatus.classList.add(tone);
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return window.btoa(binary);
+}
+
+async function handleFeedbackSubmit(event) {
+  event.preventDefault();
+  const name = feedbackNameInput.value.trim();
+  const comment = feedbackCommentInput.value.trim();
+
+  if (!name || !comment) {
+    setFeedbackStatus("Please add your name and a comment before sending feedback.", "error");
+    return;
+  }
+
+  feedbackSubmitButton.disabled = true;
+  setFeedbackStatus("Sending feedback with a snapshot of your diagram...", "");
+
+  try {
+    const snapshotBlob = await buildExportPngBlob();
+    const snapshotBuffer = await snapshotBlob.arrayBuffer();
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        comment,
+        snapshotBase64: arrayBufferToBase64(snapshotBuffer),
+        snapshotMimeType: "image/png",
+        snapshotWidth: VIEWBOX.width,
+        snapshotHeight: VIEWBOX.height,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Feedback submission failed.");
+    }
+
+    feedbackCommentInput.value = "";
+    setFeedbackStatus("Thanks. Your feedback and diagram snapshot were submitted.", "success");
+  } catch (error) {
+    console.error(error);
+    setFeedbackStatus(error.message || "Feedback could not be submitted right now.", "error");
+  } finally {
+    feedbackSubmitButton.disabled = false;
+  }
 }
 
 init();

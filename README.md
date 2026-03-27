@@ -4,32 +4,45 @@ A lightweight browser app for tax lawyers to create entity structure diagrams wi
 
 ## Current Features
 
-- Tax-specific entity palette for corporations, partnerships, LLCs, disregarded entities, trusts, and individuals
+- Tax-specific entity palette for corporations, partnerships, hybrid/disregarded entities, trusts or non-entities, and individuals
 - Drag-and-drop SVG canvas
 - Separate relationship modes for ownership lines and transaction arrows
 - Inspector panel for editing entity and relationship details
 - Narrative drafting for simple plain-English structure descriptions
-- JSON save/load plus SVG and PNG export
+- Browser saves plus SVG and PNG export
+- Internal feedback form with diagram snapshot capture
 
 ## Run Locally
 
-Because this version is intentionally no-build, you can open [`index.html`](./index.html) directly in a browser.
-
-For best results, serve it from a simple local web server:
+Run the lightweight Python server:
 
 ```bash
-python3 -m http.server 8000
+python3 server.py
 ```
 
 Then open `http://localhost:8000`.
 
+If `DATABASE_URL` is not set, feedback submissions are stored locally under `/tmp/tax-flow-chart-feedback`.
+
 ## Deploy To App Garden
 
-This project includes an App Garden-ready `Dockerfile` that serves the static app on the `PORT`
-provided by the platform.
+This project includes an App Garden-ready `Dockerfile` that runs the web app plus a small feedback
+API on the `PORT` provided by the platform.
 
 The repo metadata lives in [`.appgarden.json`](./.appgarden.json) and uses the app name
 `tax-flow-chart-tool`.
+
+To use shared internal feedback storage in App Garden:
+
+1. Provision a managed Postgres database for the app so App Garden sets `DATABASE_URL`.
+2. Deploy the current code.
+3. Keep auth enabled so teammate feedback is internal.
+
+The feedback form stores:
+- submitter name
+- free-text comment
+- PNG snapshot of the current diagram
+- authenticated user email when App Garden provides `X-Authenticated-User`
 
 ## Example Narrative
 

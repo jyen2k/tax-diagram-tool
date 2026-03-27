@@ -2,8 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY index.html styles.css app.js README.md .appgarden.json ./
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY index.html feedback.html styles.css app.js feedback.js README.md .appgarden.json server.py ./
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "python -m http.server ${PORT:-8080} --bind 0.0.0.0 --directory /app"]
+CMD ["sh", "-c", "python server.py"]

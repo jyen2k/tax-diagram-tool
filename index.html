@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260327-2115" />
+    <link rel="stylesheet" href="./styles.css?v=20260327-2820" />
   </head>
   <body>
     <div class="app-shell">
@@ -288,9 +288,42 @@
           </div>
         </div>
 
+        <div class="panel-card">
+          <div class="section-heading">
+            <h2>Feedback</h2>
+            <span>Internal</span>
+          </div>
+          <form id="feedbackForm" class="editor-form">
+            <label>
+              Name
+              <input id="feedbackName" type="text" placeholder="Your name" />
+            </label>
+            <label>
+              Comment
+              <textarea
+                id="feedbackComment"
+                rows="5"
+                placeholder="What was confusing, broken, or hard to use?"
+              ></textarea>
+            </label>
+            <button id="submitFeedback" type="submit" class="primary-button">Send Feedback</button>
+            <a
+              href="./feedback.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="secondary-button button-link"
+            >
+              Open Feedback Inbox in New Tab
+            </a>
+            <p id="feedbackStatus" class="subtle small feedback-status">
+              Sends your comment with a snapshot of the current diagram.
+            </p>
+          </form>
+        </div>
+
       </aside>
     </div>
 
-    <script src="./app.js?v=20260327-2645"></script>
+    <script src="./app.js?v=20260327-2823"></script>
   </body>
 </html>
