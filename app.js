@@ -26,6 +26,7 @@ const entityForm = document.getElementById("entityForm");
 const edgeForm = document.getElementById("edgeForm");
 const emptySelection = document.getElementById("emptySelection");
 const narrativeInput = document.getElementById("narrativeInput");
+const feedbackPanel = document.getElementById("feedbackPanel");
 const feedbackForm = document.getElementById("feedbackForm");
 const feedbackNameInput = document.getElementById("feedbackName");
 const feedbackCommentInput = document.getElementById("feedbackComment");
@@ -139,6 +140,7 @@ const BROWSER_SAVE_KEY = "tax-structure-diagram-saves";
 const MAX_BROWSER_SAVES = 5;
 
 function init() {
+  configureFeedbackAvailability();
   applyCanvasDimensions();
   syncCanvasMetrics();
   buildPalette();
@@ -394,7 +396,9 @@ function bindEvents() {
   document.getElementById("zoomIn").addEventListener("click", () => setZoom(state.zoom + 0.1));
   document.getElementById("exportSvg").addEventListener("click", exportSvg);
   document.getElementById("exportPng").addEventListener("click", exportPng);
-  feedbackForm.addEventListener("submit", handleFeedbackSubmit);
+  if (feedbackForm && !isPublicStaticSite()) {
+    feedbackForm.addEventListener("submit", handleFeedbackSubmit);
+  }
   document
     .getElementById("transactionLegendEnabled")
     .addEventListener("change", (event) => {
@@ -418,6 +422,15 @@ function bindEvents() {
   window.addEventListener("mousemove", handleCanvasMouseMove);
   window.addEventListener("mouseup", handleCanvasMouseUp);
   window.addEventListener("keydown", handleKeyDown);
+}
+
+function isPublicStaticSite() {
+  return window.location.protocol === "file:" || window.location.hostname.endsWith(".github.io");
+}
+
+function configureFeedbackAvailability() {
+  if (!feedbackPanel || !isPublicStaticSite()) return;
+  feedbackPanel.classList.add("hidden");
 }
 
 function seedDemo() {

@@ -1,7 +1,13 @@
 const refreshFeedbackInboxButton = document.getElementById("refreshFeedbackInbox");
 const feedbackInboxStatus = document.getElementById("feedbackInboxStatus");
 const feedbackInboxList = document.getElementById("feedbackInboxList");
+const feedbackUnavailablePanel = document.getElementById("feedbackUnavailablePanel");
+const feedbackInboxPanel = document.getElementById("feedbackInboxPanel");
 let pendingDeleteId = null;
+
+function isPublicStaticSite() {
+  return window.location.protocol === "file:" || window.location.hostname.endsWith(".github.io");
+}
 
 function setFeedbackInboxStatus(message, tone = "") {
   feedbackInboxStatus.textContent = message;
@@ -146,5 +152,10 @@ async function loadFeedbackInbox() {
   }
 }
 
-refreshFeedbackInboxButton.addEventListener("click", loadFeedbackInbox);
-loadFeedbackInbox();
+if (isPublicStaticSite()) {
+  feedbackInboxPanel.classList.add("hidden");
+  feedbackUnavailablePanel.classList.remove("hidden");
+} else {
+  refreshFeedbackInboxButton.addEventListener("click", loadFeedbackInbox);
+  loadFeedbackInbox();
+}
