@@ -156,6 +156,8 @@ if (isPublicStaticSite()) {
   feedbackInboxPanel.classList.add("hidden");
   feedbackUnavailablePanel.classList.remove("hidden");
 } else {
+  feedbackUnavailablePanel.classList.add("hidden");
+  feedbackInboxPanel.classList.remove("hidden");
   refreshFeedbackInboxButton.addEventListener("click", loadFeedbackInbox);
   loadFeedbackInbox();
 }

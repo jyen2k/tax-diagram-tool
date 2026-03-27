@@ -429,8 +429,9 @@ function isPublicStaticSite() {
 }
 
 function configureFeedbackAvailability() {
-  if (!feedbackPanel || !isPublicStaticSite()) return;
-  feedbackPanel.classList.add("hidden");
+  if (!feedbackPanel) return;
+  if (isPublicStaticSite()) return;
+  feedbackPanel.classList.remove("hidden");
 }
 
 function seedDemo() {
