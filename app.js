@@ -439,7 +439,7 @@ function configureFeedbackAvailability() {
     if (feedbackSubmitButton) feedbackSubmitButton.textContent = "Email Feedback";
     if (feedbackInboxLink) feedbackInboxLink.classList.add("hidden");
     if (feedbackStatus) {
-      feedbackStatus.textContent = `Opens your email app to send feedback to ${PUBLIC_FEEDBACK_EMAIL}.`;
+      feedbackStatus.textContent = "Opens your email app to send feedback to Jason.";
     }
     return;
   }
