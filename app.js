@@ -27,11 +27,13 @@ const edgeForm = document.getElementById("edgeForm");
 const emptySelection = document.getElementById("emptySelection");
 const narrativeInput = document.getElementById("narrativeInput");
 const feedbackPanel = document.getElementById("feedbackPanel");
+const feedbackAudienceLabel = document.getElementById("feedbackAudienceLabel");
 const feedbackForm = document.getElementById("feedbackForm");
 const feedbackNameInput = document.getElementById("feedbackName");
 const feedbackCommentInput = document.getElementById("feedbackComment");
 const feedbackStatus = document.getElementById("feedbackStatus");
 const feedbackSubmitButton = document.getElementById("submitFeedback");
+const feedbackInboxLink = document.getElementById("feedbackInboxLink");
 
 const state = {
   nodes: [],
@@ -138,6 +140,7 @@ const JURISDICTION_OPTIONS = [
 ];
 const BROWSER_SAVE_KEY = "tax-structure-diagram-saves";
 const MAX_BROWSER_SAVES = 5;
+const PUBLIC_FEEDBACK_EMAIL = "jasony@openai.com";
 
 function init() {
   configureFeedbackAvailability();
@@ -430,8 +433,20 @@ function isPublicStaticSite() {
 
 function configureFeedbackAvailability() {
   if (!feedbackPanel) return;
-  if (isPublicStaticSite()) return;
+  if (isPublicStaticSite()) {
+    feedbackPanel.classList.remove("hidden");
+    if (feedbackAudienceLabel) feedbackAudienceLabel.textContent = "Email";
+    if (feedbackSubmitButton) feedbackSubmitButton.textContent = "Email Feedback";
+    if (feedbackInboxLink) feedbackInboxLink.classList.add("hidden");
+    if (feedbackStatus) {
+      feedbackStatus.textContent = `Opens your email app to send feedback to ${PUBLIC_FEEDBACK_EMAIL}.`;
+    }
+    return;
+  }
   feedbackPanel.classList.remove("hidden");
+  if (feedbackAudienceLabel) feedbackAudienceLabel.textContent = "Internal";
+  if (feedbackSubmitButton) feedbackSubmitButton.textContent = "Send Feedback";
+  if (feedbackInboxLink) feedbackInboxLink.classList.remove("hidden");
 }
 
 function seedDemo() {
@@ -3536,6 +3551,23 @@ async function handleFeedbackSubmit(event) {
 
   if (!name || !comment) {
     setFeedbackStatus("Please add your name and a comment before sending feedback.", "error");
+    return;
+  }
+
+  if (isPublicStaticSite()) {
+    const subject = encodeURIComponent(`Tax Diagram Tool Feedback from ${name}`);
+    const body = encodeURIComponent(
+      [
+        `Name: ${name}`,
+        "",
+        "Feedback:",
+        comment,
+        "",
+        `Page: ${window.location.href}`,
+      ].join("\n"),
+    );
+    window.location.href = `mailto:${PUBLIC_FEEDBACK_EMAIL}?subject=${subject}&body=${body}`;
+    setFeedbackStatus(`Your email app should open with a message to ${PUBLIC_FEEDBACK_EMAIL}.`, "success");
     return;
   }
 
