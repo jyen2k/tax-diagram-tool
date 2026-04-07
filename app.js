@@ -3462,9 +3462,17 @@ async function buildImagePptxBlob() {
   <dcterms:created xsi:type="dcterms:W3CDTF">${escapeXml(createdAt)}</dcterms:created>
 </cp:coreProperties>`,
     "docProps/app.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>Tax Structure Chart Builder</Application>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>Microsoft PowerPoint</Application>
+  <PresentationFormat>On-screen Show (16:9)</PresentationFormat>
   <Slides>1</Slides>
+  <Notes>0</Notes>
+  <HiddenSlides>0</HiddenSlides>
+  <MMClips>0</MMClips>
+  <ScaleCrop>false</ScaleCrop>
+  <HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Slide Titles</vt:lpstr></vt:variant><vt:variant><vt:i4>1</vt:i4></vt:variant></vt:vector></HeadingPairs>
+  <TitlesOfParts><vt:vector size="1" baseType="lpstr"><vt:lpstr>Tax structure diagram</vt:lpstr></vt:vector></TitlesOfParts>
+  <AppVersion>16.0000</AppVersion>
 </Properties>`,
     "ppt/presentation.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
@@ -3515,6 +3523,7 @@ async function buildImagePptxBlob() {
   <p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>
   <p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>
+  <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
 </p:sldMaster>`,
     "ppt/slideMasters/_rels/slideMaster1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -3525,8 +3534,13 @@ async function buildImagePptxBlob() {
 <a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Tax Chart">
   <a:themeElements>
     <a:clrScheme name="Tax Chart"><a:dk1><a:srgbClr val="23180F"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="514236"/></a:dk2><a:lt2><a:srgbClr val="FFFDF9"/></a:lt2><a:accent1><a:srgbClr val="9B5B2F"/></a:accent1><a:accent2><a:srgbClr val="245EA8"/></a:accent2><a:accent3><a:srgbClr val="B0392F"/></a:accent3><a:accent4><a:srgbClr val="1F6C68"/></a:accent4><a:accent5><a:srgbClr val="6D3712"/></a:accent5><a:accent6><a:srgbClr val="E7E1D6"/></a:accent6><a:hlink><a:srgbClr val="245EA8"/></a:hlink><a:folHlink><a:srgbClr val="6D3712"/></a:folHlink></a:clrScheme>
-    <a:fontScheme name="Tax Chart"><a:majorFont><a:latin typeface="Arial"/></a:majorFont><a:minorFont><a:latin typeface="Arial"/></a:minorFont></a:fontScheme>
-    <a:fmtScheme name="Tax Chart"><a:fillStyleLst><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="19050"><a:solidFill><a:srgbClr val="514236"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+    <a:fontScheme name="Tax Chart"><a:majorFont><a:latin typeface="Arial"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Arial"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme>
+    <a:fmtScheme name="Tax Chart">
+      <a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"/></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"/></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"/></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"/></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill></a:fillStyleLst>
+      <a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="12700" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="19050" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst>
+      <a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>
+      <a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst>
+    </a:fmtScheme>
   </a:themeElements>
 </a:theme>`,
     "ppt/media/diagram.png": pngBytes,
