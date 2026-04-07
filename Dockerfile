@@ -6,6 +6,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY index.html feedback.html styles.css app.js feedback.js README.md .appgarden.json server.py ./
+COPY vendor ./vendor
 
 EXPOSE 8080
 
