@@ -141,6 +141,7 @@ const JURISDICTION_OPTIONS = [
 const BROWSER_SAVE_KEY = "tax-structure-diagram-saves";
 const MAX_BROWSER_SAVES = 5;
 const PUBLIC_FEEDBACK_EMAIL = "jasony@openai.com";
+const PUBLIC_API_BASE_URL = "https://tax-flow-chart-tool.app.openai.org";
 
 function init() {
   configureFeedbackAvailability();
@@ -386,7 +387,6 @@ function bindEvents() {
   document.getElementById("deleteEntity").addEventListener("click", deleteSelectedEntity);
   document.getElementById("deleteEdge").addEventListener("click", deleteSelectedEdge);
   document.getElementById("clearBoard").addEventListener("click", clearBoard);
-  document.getElementById("autoLayout").addEventListener("click", autoLayout);
   document.getElementById("generateNarrative").addEventListener("click", () => {
     generateFromNarrative({ mode: "replace" });
   });
@@ -399,7 +399,8 @@ function bindEvents() {
   document.getElementById("zoomIn").addEventListener("click", () => setZoom(state.zoom + 0.1));
   document.getElementById("exportSvg").addEventListener("click", exportSvg);
   document.getElementById("exportPng").addEventListener("click", exportPng);
-  if (feedbackForm && !isPublicStaticSite()) {
+  document.getElementById("exportPptx").addEventListener("click", exportPptx);
+  if (feedbackForm) {
     feedbackForm.addEventListener("submit", handleFeedbackSubmit);
   }
   document
@@ -429,6 +430,10 @@ function bindEvents() {
 
 function isPublicStaticSite() {
   return window.location.protocol === "file:" || window.location.hostname.endsWith(".github.io");
+}
+
+function apiUrl(path) {
+  return isPublicStaticSite() ? `${PUBLIC_API_BASE_URL}${path}` : path;
 }
 
 function configureFeedbackAvailability() {
@@ -1423,16 +1428,6 @@ function clearBoard() {
   state.marquee = null;
   state.nextNodeId = 1;
   state.nextEdgeId = 1;
-  render();
-}
-
-function autoLayout() {
-  syncCanvasMetrics();
-  const columns = Math.max(1, Math.ceil(Math.sqrt(state.nodes.length)));
-  state.nodes.forEach((node, index) => {
-    node.x = GRID * 2 + (index % columns) * (GRID * 4);
-    node.y = GRID * 3 + Math.floor(index / columns) * (GRID * 4);
-  });
   render();
 }
 
@@ -3027,7 +3022,6 @@ function layoutNarrativeDiagram() {
 
   const roots = state.nodes.filter((node) => !childIds.has(node.id));
   if (roots.length === 0) {
-    autoLayout();
     return;
   }
 
@@ -3404,6 +3398,27 @@ async function exportPng() {
   }
 }
 
+async function exportPptx() {
+  try {
+    const response = await fetch(apiUrl("/api/export/pptx"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(serializeDiagramState()),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "PPTX export failed.");
+    }
+
+    const blob = await response.blob();
+    downloadBlob(blob, "tax-structure-diagram.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+  } catch (error) {
+    console.error(error);
+    window.alert(error.message || "PPTX export failed.");
+  }
+}
+
 function downloadBlob(content, filename, type) {
   const blob = content instanceof Blob ? content : new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -3567,7 +3582,7 @@ async function handleFeedbackSubmit(event) {
       ].join("\n"),
     );
     window.location.href = `mailto:${PUBLIC_FEEDBACK_EMAIL}?subject=${subject}&body=${body}`;
-    setFeedbackStatus(`Your email app should open with a message to ${PUBLIC_FEEDBACK_EMAIL}.`, "success");
+    setFeedbackStatus("Your email app should open with a message to Jason.", "success");
     return;
   }
 

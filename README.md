@@ -9,7 +9,7 @@ A lightweight browser app for tax lawyers to create entity structure diagrams wi
 - Separate relationship modes for ownership lines and transaction arrows
 - Inspector panel for editing entity and relationship details
 - Narrative drafting for simple plain-English structure descriptions
-- Browser saves plus SVG and PNG export
+- Browser saves plus SVG, PNG, and editable PPTX export
 - Internal feedback form with diagram snapshot capture
 
 ## Run Locally
