@@ -1,16 +1,16 @@
 :root {
-  --bg: #f4efe6;
-  --panel: rgba(255, 251, 245, 0.92);
-  --panel-strong: #fffdf9;
-  --border: rgba(79, 57, 40, 0.14);
-  --text: #23180f;
-  --muted: #6c5a4d;
-  --accent: #9b5b2f;
-  --accent-strong: #6d3712;
-  --teal: #1f6c68;
-  --danger: #ab3b2f;
-  --shadow: 0 24px 60px rgba(60, 34, 17, 0.12);
-  --canvas-grid: rgba(84, 67, 54, 0.08);
+  --bg: #f3f6f8;
+  --panel: rgba(246, 249, 251, 0.92);
+  --panel-strong: #ffffff;
+  --border: rgba(45, 67, 80, 0.16);
+  --text: #1d252b;
+  --muted: #5f6f79;
+  --accent: #2f6f8f;
+  --accent-strong: #1e5069;
+  --teal: #487d72;
+  --danger: #b45a4a;
+  --shadow: 0 24px 60px rgba(24, 43, 54, 0.12);
+  --canvas-grid: rgba(47, 83, 101, 0.09);
 }
 
 * {
@@ -23,9 +23,9 @@ body {
   font-family: "IBM Plex Sans", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(255, 215, 177, 0.55), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(108, 157, 153, 0.24), transparent 30%),
-    linear-gradient(180deg, #f7f2ea 0%, #efe5d7 100%);
+    radial-gradient(circle at top left, rgba(174, 205, 222, 0.58), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(119, 156, 169, 0.24), transparent 32%),
+    linear-gradient(180deg, #f8fafb 0%, #e8f0f5 100%);
 }
 
 button,
@@ -69,7 +69,7 @@ select {
 }
 
 .brand-card {
-  background: linear-gradient(145deg, rgba(255, 248, 238, 0.96), rgba(255, 236, 215, 0.9));
+  background: linear-gradient(145deg, rgba(251, 253, 255, 0.96), rgba(231, 238, 243, 0.92));
 }
 
 .eyebrow {
@@ -174,18 +174,18 @@ h3 {
 .secondary-button:hover,
 .danger-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(69, 44, 22, 0.1);
+  box-shadow: 0 12px 24px rgba(24, 43, 54, 0.12);
 }
 
 .tool-button.active,
 .palette-button:hover {
-  border-color: rgba(109, 55, 18, 0.36);
-  background: rgba(255, 243, 229, 0.96);
+  border-color: rgba(47, 111, 143, 0.42);
+  background: rgba(231, 238, 243, 0.96);
 }
 
 .primary-button {
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-  color: #fffaf5;
+  color: #f8fbfd;
   border-color: transparent;
 }
 
@@ -194,9 +194,9 @@ h3 {
 }
 
 .danger-button {
-  background: rgba(171, 59, 47, 0.1);
+  background: rgba(180, 90, 74, 0.1);
   color: var(--danger);
-  border-color: rgba(171, 59, 47, 0.16);
+  border-color: rgba(180, 90, 74, 0.18);
 }
 
 .ownership-label-group .edge-label {
@@ -208,7 +208,7 @@ input,
 select {
   width: 100%;
   border-radius: 14px;
-  border: 1px solid rgba(78, 58, 43, 0.14);
+  border: 1px solid rgba(45, 67, 80, 0.16);
   background: rgba(255, 255, 255, 0.84);
   padding: 12px 13px;
   color: var(--text);
@@ -217,14 +217,14 @@ select {
 textarea:focus,
 input:focus,
 select:focus {
-  outline: 2px solid rgba(109, 55, 18, 0.2);
-  border-color: rgba(109, 55, 18, 0.35);
+  outline: 2px solid rgba(47, 111, 143, 0.22);
+  border-color: rgba(47, 111, 143, 0.42);
 }
 
 .helper-box {
   margin-top: 12px;
-  background: rgba(247, 241, 233, 0.94);
-  border: 1px dashed rgba(90, 64, 44, 0.18);
+  background: rgba(238, 244, 247, 0.94);
+  border: 1px dashed rgba(45, 67, 80, 0.2);
   border-radius: 16px;
   padding: 12px 14px;
   color: var(--muted);
@@ -277,7 +277,7 @@ select:focus {
   overflow: auto;
   height: min(1320px, calc(100vh - 140px));
   min-height: 1080px;
-  background: linear-gradient(180deg, rgba(255, 252, 246, 0.95), rgba(250, 243, 232, 0.95));
+  background: linear-gradient(180deg, rgba(250, 253, 255, 0.96), rgba(236, 244, 248, 0.96));
   cursor: grab;
 }
 
@@ -301,7 +301,7 @@ select:focus {
   right: 18px;
   bottom: 16px;
   background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(88, 63, 46, 0.12);
+  border: 1px solid rgba(45, 67, 80, 0.16);
   border-radius: 999px;
   padding: 10px 14px;
   color: var(--muted);
@@ -320,11 +320,11 @@ select:focus {
 }
 
 .feedback-status.success {
-  color: #245e39;
+  color: #2f6f5f;
 }
 
 .feedback-status.error {
-  color: #ab3b2f;
+  color: var(--danger);
 }
 
 .button-link {
@@ -356,7 +356,7 @@ select:focus {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(79, 57, 40, 0.12);
+  border: 1px solid rgba(45, 67, 80, 0.14);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
 }
@@ -396,7 +396,7 @@ select:focus {
   max-height: 560px;
   object-fit: contain;
   border-radius: 14px;
-  border: 1px solid rgba(79, 57, 40, 0.12);
+  border: 1px solid rgba(45, 67, 80, 0.14);
   background: #ffffff;
 }
 
@@ -436,8 +436,8 @@ select:focus {
 }
 
 .mini-list button.active {
-  background: rgba(255, 243, 229, 0.96);
-  border-color: rgba(109, 55, 18, 0.3);
+  background: rgba(231, 238, 243, 0.96);
+  border-color: rgba(47, 111, 143, 0.36);
 }
 
 .entity-box {
@@ -460,7 +460,7 @@ select:focus {
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
-  border: 1px solid rgba(79, 57, 40, 0.12);
+  border: 1px solid rgba(45, 67, 80, 0.14);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.72);
 }
@@ -510,7 +510,7 @@ select:focus {
 
 .entity-text {
   font-family: "IBM Plex Sans", sans-serif;
-  fill: #20160f;
+  fill: #1d252b;
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
@@ -520,7 +520,7 @@ select:focus {
 .entity-jurisdiction {
   font-family: "IBM Plex Sans", sans-serif;
   font-size: 16px;
-  fill: #6c5a4d;
+  fill: #5f6f79;
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
@@ -539,7 +539,7 @@ select:focus {
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  fill: rgba(30, 23, 17, 0.72);
+  fill: rgba(29, 37, 43, 0.72);
 }
 
 .edge {
@@ -559,8 +559,8 @@ select:focus {
 }
 
 .selection-marquee {
-  fill: rgba(155, 91, 47, 0.08);
-  stroke: rgba(109, 55, 18, 0.65);
+  fill: rgba(47, 111, 143, 0.1);
+  stroke: rgba(47, 111, 143, 0.68);
   stroke-width: 1.5;
   stroke-dasharray: 8 5;
   pointer-events: none;
@@ -569,7 +569,7 @@ select:focus {
 .transaction-legend .legend-title {
   font-size: 16px;
   font-weight: 700;
-  fill: #3a2d23;
+  fill: #1d252b;
 }
 
 .transaction-legend {
@@ -577,8 +577,8 @@ select:focus {
 }
 
 .transaction-legend .legend-box {
-  fill: rgba(255, 252, 247, 0.96);
-  stroke: rgba(81, 66, 54, 0.9);
+  fill: rgba(255, 255, 255, 0.96);
+  stroke: rgba(45, 67, 80, 0.72);
   stroke-width: 1.75;
 }
 
@@ -595,9 +595,9 @@ select:focus {
 
 .transaction-legend .legend-label {
   font-size: 14px;
-  fill: #3a2d23;
+  fill: #1d252b;
   paint-order: stroke;
-  stroke: rgba(255, 250, 244, 0.92);
+  stroke: rgba(255, 255, 255, 0.94);
   stroke-width: 5px;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -617,9 +617,9 @@ select:focus {
 
 .edge-label {
   font-size: 14px;
-  fill: #2f261f;
+  fill: #1d252b;
   paint-order: stroke;
-  stroke: rgba(255, 250, 244, 0.92);
+  stroke: rgba(255, 255, 255, 0.94);
   stroke-width: 6px;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -632,7 +632,7 @@ select:focus {
 }
 
 .multi-selected .entity-rect {
-  stroke: #7b3d12;
+  stroke: #2f6f8f;
   stroke-width: 4;
   animation: multi-select-pulse 1.1s ease-in-out infinite;
 }

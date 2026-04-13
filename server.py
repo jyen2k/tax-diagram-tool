@@ -4,14 +4,13 @@ import base64
 import io
 import json
 import os
+import re
 import uuid
-import zipfile
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from xml.sax.saxutils import escape
 
 try:
     import psycopg
@@ -264,30 +263,25 @@ def delete_feedback_from_database(entry_id: str) -> bool:
 
 
 def delete_feedback_locally(entry_id: str) -> bool:
+    if not re.fullmatch(r"[a-f0-9]{32}", entry_id):
+        return False
+
     metadata_path = LOCAL_FEEDBACK_DIR / f"{entry_id}.json"
     image_path = LOCAL_FEEDBACK_DIR / f"{entry_id}.png"
     deleted = False
 
     if metadata_path.exists():
-      metadata_path.unlink()
-      deleted = True
+        metadata_path.unlink()
+        deleted = True
     if image_path.exists():
-      image_path.unlink()
-      deleted = True
+        image_path.unlink()
+        deleted = True
 
     return deleted
 
 
-EMU_PER_INCH = 914400
-SLIDE_WIDTH = 12192000
-SLIDE_HEIGHT = 6858000
-SLIDE_MARGIN = int(0.45 * EMU_PER_INCH)
 BOX_WIDTH = 120
 BOX_HEIGHT = 80
-
-
-def xml_text(value: Any) -> str:
-    return escape(str(value or ""), {'"': "&quot;", "'": "&apos;"})
 
 
 def pptx_response(handler: "TaxChartHandler", content: bytes) -> None:
@@ -341,294 +335,6 @@ def diagram_bounds(payload: dict[str, Any]) -> tuple[float, float, float, float]
         for node in nodes
     )
     return min_x - 80, min_y - 80, max_x + 80, max_y + 120
-
-
-class PptxDiagramBuilder:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.payload = payload
-        self.nodes = node_lookup(payload)
-        self.shape_id = 2
-        min_x, min_y, max_x, max_y = diagram_bounds(payload)
-        self.min_x = min_x
-        self.min_y = min_y
-        width = max(1, max_x - min_x)
-        height = max(1, max_y - min_y)
-        self.scale = min((SLIDE_WIDTH - 2 * SLIDE_MARGIN) / width, (SLIDE_HEIGHT - 2 * SLIDE_MARGIN) / height)
-        self.offset_x = SLIDE_MARGIN
-        self.offset_y = SLIDE_MARGIN
-        self.edge_parts: list[str] = []
-        self.node_parts: list[str] = []
-        self.label_parts: list[str] = []
-
-    def next_id(self) -> int:
-        current = self.shape_id
-        self.shape_id += 1
-        return current
-
-    def x(self, value: float) -> int:
-        return int(self.offset_x + (value - self.min_x) * self.scale)
-
-    def y(self, value: float) -> int:
-        return int(self.offset_y + (value - self.min_y) * self.scale)
-
-    def w(self, value: float) -> int:
-        return max(1, int(value * self.scale))
-
-    def h(self, value: float) -> int:
-        return max(1, int(value * self.scale))
-
-    def line_xml(
-        self,
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
-        *,
-        color: str = "1E1A17",
-        width: int = 19050,
-        dashed: bool = False,
-        arrow_end: bool = False,
-        arrow_start: bool = False,
-        name: str = "Line",
-    ) -> str:
-        sid = self.next_id()
-        px1, py1, px2, py2 = self.x(x1), self.y(y1), self.x(x2), self.y(y2)
-        off_x, off_y = min(px1, px2), min(py1, py2)
-        ext_x, ext_y = max(1, abs(px2 - px1)), max(1, abs(py2 - py1))
-        flip_h = ' flipH="1"' if px2 < px1 else ""
-        flip_v = ' flipV="1"' if py2 < py1 else ""
-        dash_xml = '<a:prstDash val="dash"/>' if dashed else ""
-        start_xml = '<a:headEnd type="triangle"/>' if arrow_start else ""
-        end_xml = '<a:tailEnd type="triangle"/>' if arrow_end else ""
-        return f"""
-        <p:cxnSp>
-          <p:nvCxnSpPr><p:cNvPr id="{sid}" name="{xml_text(name)} {sid}"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>
-          <p:spPr>
-            <a:xfrm{flip_h}{flip_v}><a:off x="{off_x}" y="{off_y}"/><a:ext cx="{ext_x}" cy="{ext_y}"/></a:xfrm>
-            <a:prstGeom prst="line"><a:avLst/></a:prstGeom>
-            <a:ln w="{width}"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill>{dash_xml}{start_xml}{end_xml}</a:ln>
-          </p:spPr>
-        </p:cxnSp>
-        """
-
-    def shape_xml(
-        self,
-        shape_type: str,
-        x: float,
-        y: float,
-        width: float,
-        height: float,
-        *,
-        text: str = "",
-        fill: str | None = "FFFDF9",
-        line: str | None = "514236",
-        dashed: bool = False,
-        font_size: int = 1100,
-        name: str = "Shape",
-    ) -> str:
-        sid = self.next_id()
-        fill_xml = f'<a:solidFill><a:srgbClr val="{fill}"/></a:solidFill>' if fill else "<a:noFill/>"
-        dash_xml = '<a:prstDash val="dash"/>' if dashed else ""
-        line_xml = (
-            f'<a:ln w="19050"><a:solidFill><a:srgbClr val="{line}"/></a:solidFill>'
-            f'{dash_xml}</a:ln>'
-            if line
-            else '<a:ln><a:noFill/></a:ln>'
-        )
-        text_xml = self.text_body(text, font_size=font_size) if text else "<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>"
-        return f"""
-        <p:sp>
-          <p:nvSpPr><p:cNvPr id="{sid}" name="{xml_text(name)} {sid}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
-          <p:spPr>
-            <a:xfrm><a:off x="{self.x(x)}" y="{self.y(y)}"/><a:ext cx="{self.w(width)}" cy="{self.h(height)}"/></a:xfrm>
-            <a:prstGeom prst="{shape_type}"><a:avLst/></a:prstGeom>
-            {fill_xml}{line_xml}
-          </p:spPr>
-          {text_xml}
-        </p:sp>
-        """
-
-    def text_body(self, text: str, *, font_size: int = 1100) -> str:
-        lines = str(text or "").splitlines() or [""]
-        paragraphs = []
-        for line in lines:
-            paragraphs.append(
-                f'<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="{font_size}" b="0">'
-                f'<a:solidFill><a:srgbClr val="23180F"/></a:solidFill></a:rPr><a:t>{xml_text(line)}</a:t></a:r></a:p>'
-            )
-        return f'<p:txBody><a:bodyPr wrap="square" anchor="ctr"/><a:lstStyle/>{"".join(paragraphs)}</p:txBody>'
-
-    def node_label(self, node: dict[str, Any]) -> str:
-        lines = [str(node.get("label") or "")]
-        custom = str(node.get("jurisdictionCustom") or "").strip()
-        jurisdiction = str(node.get("jurisdiction") or "").strip()
-        if node.get("jurisdictionMode") == "custom" and custom:
-            lines.append(custom)
-        elif jurisdiction:
-            lines.append(jurisdiction)
-        return "\n".join(lines)
-
-    def render_nodes(self) -> None:
-        for node in self.payload.get("nodes", []):
-            x, y = float(node.get("x", 0)), float(node.get("y", 0))
-            node_type = node.get("type", "corporation")
-            fill = "E7E1D6" if node.get("fill") == "shaded" else "FFFDF9"
-            dashed = node.get("lineStyle") == "dashed"
-            label = self.node_label(node)
-            if node_type == "individual":
-                self.render_individual(node, x, y, label)
-            elif node_type == "trust":
-                self.node_parts.append(self.shape_xml("ellipse", x, y, BOX_WIDTH, BOX_HEIGHT, fill=fill, dashed=dashed, name="Trust"))
-                self.label_parts.append(self.shape_xml("rect", x, y, BOX_WIDTH, BOX_HEIGHT, text=label, fill=None, line=None, name="Trust Label"))
-            elif node_type == "partnership":
-                self.node_parts.append(self.shape_xml("triangle", x, y, BOX_WIDTH, BOX_HEIGHT, fill=fill, dashed=dashed, name="Partnership"))
-                self.label_parts.append(self.shape_xml("rect", x + 8, y + 24, BOX_WIDTH - 16, BOX_HEIGHT - 28, text=label, fill=None, line=None, name="Partnership Label"))
-            else:
-                self.node_parts.append(self.shape_xml("rect", x, y, BOX_WIDTH, BOX_HEIGHT, fill=fill, dashed=dashed, name="Entity"))
-                if node_type == "dreg":
-                    inner_fill = "E7E1D6" if node.get("innerFill") == "shaded" else None
-                    self.node_parts.append(self.shape_xml("ellipse", x, y, BOX_WIDTH, BOX_HEIGHT, fill=inner_fill, dashed=node.get("innerLineStyle") == "dashed", name="Inner Oval"))
-                elif node_type == "hybrid-partnership":
-                    self.node_parts.append(self.line_xml(x, y + BOX_HEIGHT, x + BOX_WIDTH / 2, y, dashed=node.get("innerLineStyle") == "dashed", name="Inner Triangle"))
-                    self.node_parts.append(self.line_xml(x + BOX_WIDTH, y + BOX_HEIGHT, x + BOX_WIDTH / 2, y, dashed=node.get("innerLineStyle") == "dashed", name="Inner Triangle"))
-                elif node_type == "reverse-hybrid":
-                    self.node_parts.append(self.line_xml(x, y, x + BOX_WIDTH / 2, y + BOX_HEIGHT, dashed=node.get("innerLineStyle") == "dashed", name="Inner Triangle"))
-                    self.node_parts.append(self.line_xml(x + BOX_WIDTH, y, x + BOX_WIDTH / 2, y + BOX_HEIGHT, dashed=node.get("innerLineStyle") == "dashed", name="Inner Triangle"))
-                self.label_parts.append(self.shape_xml("rect", x + 4, y, BOX_WIDTH - 8, BOX_HEIGHT, text=label, fill=None, line=None, name="Entity Label"))
-            if node.get("crossedOut") and node_type != "individual":
-                self.node_parts.append(self.line_xml(x - 8, y - 8, x + BOX_WIDTH + 8, y + BOX_HEIGHT + 8, dashed=True, name="Liquidation X"))
-                self.node_parts.append(self.line_xml(x + BOX_WIDTH + 8, y - 8, x - 8, y + BOX_HEIGHT + 8, dashed=True, name="Liquidation X"))
-
-    def render_individual(self, node: dict[str, Any], x: float, y: float, label: str) -> None:
-        centers = [BOX_WIDTH / 2]
-        if node.get("multipleIndividuals"):
-            centers = [BOX_WIDTH / 2 - 22, BOX_WIDTH / 2 + 22, BOX_WIDTH / 2]
-        for index, center in enumerate(centers):
-            offset_y = 10 if node.get("multipleIndividuals") and index < 2 else 2
-            cx = x + center
-            top = y + offset_y
-            self.node_parts.append(self.shape_xml("ellipse", cx - 9, top, 18, 18, fill=None, line="514236", name="Individual Head"))
-            self.node_parts.append(self.line_xml(cx, top + 18, cx, top + 46, width=12700, name="Individual Body"))
-            self.node_parts.append(self.line_xml(cx - 18, top + 30, cx + 18, top + 30, width=12700, name="Individual Arms"))
-            self.node_parts.append(self.line_xml(cx, top + 46, cx - 16, top + 68, width=12700, name="Individual Leg"))
-            self.node_parts.append(self.line_xml(cx, top + 46, cx + 16, top + 68, width=12700, name="Individual Leg"))
-        self.label_parts.append(self.shape_xml("rect", x, y + BOX_HEIGHT + 2, BOX_WIDTH, 34, text=label, fill=None, line=None, name="Individual Label"))
-
-    def edge_color(self, edge: dict[str, Any]) -> str:
-        return {"red": "B0392F", "blue": "245EA8"}.get(edge.get("color"), "1E1A17")
-
-    def render_edges(self) -> None:
-        for edge in self.payload.get("edges", []):
-            if edge.get("kind") == "ownership":
-                self.render_ownership(edge)
-            elif edge.get("kind") == "transaction":
-                self.render_transaction(edge)
-
-    def render_ownership(self, edge: dict[str, Any]) -> None:
-        render_nodes = ownership_render_nodes(edge, self.nodes)
-        if not render_nodes:
-            return
-        parent, child = render_nodes
-        start_x = float(parent.get("x", 0)) + BOX_WIDTH / 2
-        start_y = float(parent.get("y", 0)) + BOX_HEIGHT
-        end_x = float(child.get("x", 0)) + BOX_WIDTH / 2
-        end_y = float(child.get("y", 0))
-        mid_y = start_y + (end_y - start_y) / 2
-        dashed = edge.get("lineStyle") == "dashed"
-        color = self.edge_color(edge)
-        self.edge_parts.append(self.line_xml(start_x, start_y, start_x, mid_y, color=color, dashed=dashed, name="Ownership Line"))
-        self.edge_parts.append(self.line_xml(start_x, mid_y, end_x, mid_y, color=color, dashed=dashed, name="Ownership Line"))
-        self.edge_parts.append(self.line_xml(end_x, mid_y, end_x, end_y, color=color, dashed=dashed, name="Ownership Line"))
-        label = "\n".join([value for value in [edge.get("percent"), edge.get("label")] if value])
-        if label:
-            side = -1 if end_x <= start_x else 1
-            self.label_parts.append(self.shape_xml("rect", end_x + side * 16 - (54 if side < 0 else 0), (mid_y + end_y) / 2 - 12, 54, 26, text=label, fill=None, line=None, font_size=900, name="Ownership Label"))
-
-    def render_transaction(self, edge: dict[str, Any]) -> None:
-        from_node = self.nodes.get(edge.get("from"))
-        to_node = self.nodes.get(edge.get("to"))
-        if not from_node or not to_node:
-            return
-        fx = float(from_node.get("x", 0)) + (BOX_WIDTH if from_node.get("x", 0) <= to_node.get("x", 0) else 0)
-        fy = float(from_node.get("y", 0)) + BOX_HEIGHT / 2
-        tx = float(to_node.get("x", 0)) + (0 if from_node.get("x", 0) <= to_node.get("x", 0) else BOX_WIDTH)
-        ty = float(to_node.get("y", 0)) + BOX_HEIGHT / 2
-        color = self.edge_color(edge)
-        dashed = edge.get("lineStyle") == "dashed"
-        self.edge_parts.append(self.line_xml(fx, fy, tx, ty, color=color, dashed=dashed, arrow_end=True, arrow_start=bool(edge.get("bidirectional")), name="Transaction Arrow"))
-        label = edge.get("label") or "Transaction"
-        self.label_parts.append(self.shape_xml("rect", (fx + tx) / 2 - 55, (fy + ty) / 2 - 12, 110, 24, text=label, fill=None, line=None, font_size=900, name="Transaction Label"))
-
-    def slide_xml(self) -> str:
-        self.render_edges()
-        self.render_nodes()
-        content = "\n".join(self.edge_parts + self.node_parts + self.label_parts)
-        return f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:cSld>
-    <p:spTree>
-      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
-      {content}
-    </p:spTree>
-  </p:cSld>
-  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sld>"""
-
-
-def build_pptx(payload: dict[str, Any]) -> bytes:
-    builder = PptxDiagramBuilder(payload)
-    slide_xml = builder.slide_xml()
-    files = {
-        "[Content_Types].xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-  <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
-  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
-  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
-  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>""",
-        "_rels/.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
-</Relationships>""",
-        "docProps/core.xml": f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>Tax structure diagram</dc:title><dc:creator>Tax Structure Chart Builder</dc:creator>
-  <dcterms:created xsi:type="dcterms:W3CDTF">{datetime.now(timezone.utc).isoformat()}</dcterms:created>
-</cp:coreProperties>""",
-        "docProps/app.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Tax Structure Chart Builder</Application></Properties>""",
-        "ppt/presentation.xml": f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
-  <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
-  <p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst>
-  <p:sldSz cx="{SLIDE_WIDTH}" cy="{SLIDE_HEIGHT}" type="wide"/><p:notesSz cx="6858000" cy="9144000"/>
-</p:presentation>""",
-        "ppt/_rels/presentation.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
-</Relationships>""",
-        "ppt/slides/slide1.xml": slide_xml,
-        "ppt/slides/_rels/slide1.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>""",
-        "ppt/slideLayouts/slideLayout1.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>""",
-        "ppt/slideLayouts/_rels/slideLayout1.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>""",
-        "ppt/slideMasters/slideMaster1.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst></p:sldMaster>""",
-        "ppt/slideMasters/_rels/slideMaster1.xml.rels": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>""",
-        "ppt/theme/theme1.xml": """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Tax Chart"><a:themeElements><a:clrScheme name="Tax Chart"><a:dk1><a:srgbClr val="23180F"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="514236"/></a:dk2><a:lt2><a:srgbClr val="FFFDF9"/></a:lt2><a:accent1><a:srgbClr val="9B5B2F"/></a:accent1><a:accent2><a:srgbClr val="245EA8"/></a:accent2><a:accent3><a:srgbClr val="B0392F"/></a:accent3><a:accent4><a:srgbClr val="1F6C68"/></a:accent4><a:accent5><a:srgbClr val="6D3712"/></a:accent5><a:accent6><a:srgbClr val="E7E1D6"/></a:accent6><a:hlink><a:srgbClr val="245EA8"/></a:hlink><a:folHlink><a:srgbClr val="6D3712"/></a:folHlink></a:clrScheme><a:fontScheme name="Tax Chart"><a:majorFont><a:latin typeface="Arial"/></a:majorFont><a:minorFont><a:latin typeface="Arial"/></a:minorFont></a:fontScheme><a:fmtScheme name="Tax Chart"><a:fillStyleLst><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="19050"><a:solidFill><a:srgbClr val="514236"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>""",
-    }
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as package:
-        for path, content in files.items():
-            package.writestr(path, content)
-    return buffer.getvalue()
 
 
 PPTX_BASE_INCHES_PER_UNIT = 1 / 80

@@ -847,7 +847,7 @@ function renderCanvasBackdrop() {
   background.setAttribute("y", "0");
   background.setAttribute("width", String(VIEWBOX.width));
   background.setAttribute("height", String(VIEWBOX.height));
-  background.setAttribute("fill", "#fffaf5");
+  background.setAttribute("fill", "#ffffff");
   background.setAttribute("pointer-events", "none");
   canvas.appendChild(background);
 
@@ -3400,7 +3400,7 @@ async function exportPng() {
 
 async function exportPptx() {
   try {
-    const blob = isPublicStaticSite() ? await buildImagePptxBlob() : await fetchEditablePptxBlob();
+    const blob = await fetchEditablePptxBlob();
     downloadBlob(blob, "tax-structure-diagram.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
   } catch (error) {
     console.error(error);
@@ -3423,7 +3423,7 @@ async function fetchEditablePptxBlob() {
 
     return response.blob();
   } catch (error) {
-    console.warn("Falling back to browser PPTX export.", error);
+    console.warn("Falling back to image-only browser PPTX export.", error);
     return buildImagePptxBlob();
   }
 }
