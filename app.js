@@ -3400,8 +3400,14 @@ async function exportPng() {
 
 async function exportPptx() {
   try {
-    const blob = await fetchEditablePptxBlob();
+    const { blob, isEditable, fallbackMessage } = await fetchEditablePptxBlob();
     downloadBlob(blob, "tax-structure-diagram.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    if (!isEditable) {
+      window.alert(
+        fallbackMessage ||
+          "PowerPoint export fell back to an image-only slide, so the diagram will not be editable in PowerPoint."
+      );
+    }
   } catch (error) {
     console.error(error);
     window.alert(error.message || "PPTX export failed.");
@@ -3421,10 +3427,19 @@ async function fetchEditablePptxBlob() {
       throw new Error(payload.error || "PPTX export failed.");
     }
 
-    return response.blob();
+    return {
+      blob: await response.blob(),
+      isEditable: true,
+      fallbackMessage: "",
+    };
   } catch (error) {
     console.warn("Falling back to image-only browser PPTX export.", error);
-    return buildImagePptxBlob();
+    return {
+      blob: await buildImagePptxBlob(),
+      isEditable: false,
+      fallbackMessage:
+        "Editable PowerPoint export failed, so this file was exported as a single image instead. It will open in PowerPoint, but the diagram elements will not be editable. Try refreshing the page and exporting again.",
+    };
   }
 }
 
