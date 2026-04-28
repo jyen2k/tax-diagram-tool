@@ -640,7 +640,7 @@ function renderCanvas() {
     if (edge.kind === "transaction") {
       path.setAttribute("marker-end", `url(#transactionArrow-${edge.color || "black"})`);
       if (edge.bidirectional) {
-        path.setAttribute("marker-start", `url(#transactionArrow-${edge.color || "black"})`);
+        path.setAttribute("marker-start", `url(#transactionArrowStart-${edge.color || "black"})`);
       }
     }
     group.appendChild(path);
