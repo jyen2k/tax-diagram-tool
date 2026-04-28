@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import math
 import os
 import re
 import uuid
@@ -301,6 +302,59 @@ def srgb(hex_value: str) -> str:
     return hex_value.replace("#", "").upper()
 
 
+def safe_float(value: Any, fallback: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if parsed != parsed or parsed in (float("inf"), float("-inf")):
+        return fallback
+    return parsed
+
+
+def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    nodes = []
+    for index, node in enumerate(payload.get("nodes", [])):
+        if not isinstance(node, dict):
+            continue
+        nodes.append(
+            {
+                **node,
+                "x": safe_float(node.get("x"), 120 + (index % 3) * 240),
+                "y": safe_float(node.get("y"), 120 + (index // 3) * 160),
+            }
+        )
+
+    edges = []
+    for edge in payload.get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+        edges.append(
+            {
+                **edge,
+                "curveOffset": safe_float(edge.get("curveOffset"), 0),
+            }
+        )
+
+    legend = payload.get("transactionLegend") or {}
+    if not isinstance(legend, dict):
+        legend = {}
+
+    return {
+        **payload,
+        "nodes": nodes,
+        "edges": edges,
+        "workspaceWidth": safe_float(payload.get("workspaceWidth"), 1400),
+        "workspaceHeight": safe_float(payload.get("workspaceHeight"), 900),
+        "zoom": safe_float(payload.get("zoom"), 1),
+        "transactionLegend": {
+            **legend,
+            "x": safe_float(legend.get("x"), 70),
+            "y": safe_float(legend.get("y"), 760),
+        },
+    }
+
+
 def node_lookup(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {node.get("id"): node for node in payload.get("nodes", []) if node.get("id")}
 
@@ -385,6 +439,8 @@ class EditablePptxDiagramBuilder:
         self.slide = self.presentation.slides.add_slide(self.presentation.slide_layouts[6])
         self.slide.background.fill.solid()
         self.slide.background.fill.fore_color.rgb = pptx_rgb("FFFFFF")
+        self.ownership_branch_levels = self.build_ownership_branch_levels()
+        self.ownership_segments = self.build_ownership_segments(self.ownership_branch_levels)
 
     def diagram_bounds(self) -> tuple[float, float, float, float]:
         min_x, min_y, max_x, max_y = diagram_bounds(self.payload)
@@ -462,6 +518,38 @@ class EditablePptxDiagramBuilder:
         if arrow_start or arrow_end:
             self.add_arrowheads(connector, arrow_start=arrow_start, arrow_end=arrow_end)
         return connector
+
+    def add_polyline(
+        self,
+        points: list[dict[str, float]],
+        *,
+        color: str = "1E1A17",
+        width_pt: float = 1.25,
+        dashed: bool = False,
+        arrow_start: bool = False,
+        arrow_end: bool = False,
+    ) -> Any | None:
+        if len(points) < 2:
+            return None
+
+        min_x = min(point["x"] for point in points)
+        min_y = min(point["y"] for point in points)
+        local_points = [(point["x"] - min_x, point["y"] - min_y) for point in points]
+        builder = self.slide.shapes.build_freeform(
+            start_x=local_points[0][0],
+            start_y=local_points[0][1],
+            scale=Inches(self.scale),
+        )
+        builder.add_line_segments(local_points[1:], close=False)
+        shape = builder.convert_to_shape(origin_x=self.x(min_x), origin_y=self.y(min_y))
+        shape.fill.background()
+        shape.line.color.rgb = pptx_rgb(color)
+        shape.line.width = Pt(width_pt)
+        if dashed:
+            shape.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        if arrow_start or arrow_end:
+            self.add_arrowheads(shape, arrow_start=arrow_start, arrow_end=arrow_end)
+        return shape
 
     def add_arrowheads(self, connector: Any, *, arrow_start: bool, arrow_end: bool) -> None:
         if parse_xml is None:
@@ -555,11 +643,152 @@ class EditablePptxDiagramBuilder:
     def label_text(self, node: dict[str, Any]) -> str:
         return "\n".join(self.wrap_node_label(node))
 
+    def point(self, x: float, y: float) -> dict[str, float]:
+        return {"x": x, "y": y}
+
+    def node_center(self, node: dict[str, Any]) -> dict[str, float]:
+        return self.point(float(node.get("x", 0)) + BOX_WIDTH / 2, float(node.get("y", 0)) + BOX_HEIGHT / 2)
+
     def ownership_start_y(self, node: dict[str, Any]) -> float:
         if node.get("type") != "individual":
             return float(node.get("y", 0)) + BOX_HEIGHT
         label_line_count = max(1, len(self.wrap_node_label(node)))
         return float(node.get("y", 0)) + BOX_HEIGHT + 8 + label_line_count * 12
+
+    def build_ownership_branch_levels(self) -> dict[str, float]:
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for edge in self.payload.get("edges", []):
+            if edge.get("kind") != "ownership":
+                continue
+            nodes = ownership_render_nodes(edge, self.nodes)
+            if not nodes:
+                continue
+            parent, child = nodes
+            grouped.setdefault(str(parent.get("id")), []).append(child)
+
+        levels: dict[str, float] = {}
+        for parent_id, children in grouped.items():
+            parent = self.nodes.get(parent_id)
+            if not parent:
+                continue
+            lower_tier_children = [child for child in children if float(child.get("y", 0)) > float(parent.get("y", 0))]
+            if not lower_tier_children:
+                continue
+            start_y = self.ownership_start_y(parent)
+            nearest_child_top = min(float(child.get("y", 0)) for child in lower_tier_children)
+            levels[parent_id] = start_y + (nearest_child_top - start_y) / 2
+        return levels
+
+    def label_t_for_segment(self, start: dict[str, float], end: dict[str, float]) -> float:
+        length = math.hypot(end["x"] - start["x"], end["y"] - start["y"])
+        if length == 0:
+            return 0.5
+        preferred_distance = min(32, length / 2)
+        return max(0.15, min(0.85, preferred_distance / length))
+
+    def count_ownership_parents_for_child(self, child_id: str) -> int:
+        count = 0
+        for edge in self.payload.get("edges", []):
+            if edge.get("kind") != "ownership":
+                continue
+            nodes = ownership_render_nodes(edge, self.nodes)
+            if nodes and str(nodes[1].get("id")) == child_id:
+                count += 1
+        return count
+
+    def ownership_label_position(
+        self,
+        placement: dict[str, Any],
+        points: list[dict[str, float]],
+        directions: dict[str, int],
+    ) -> dict[str, Any]:
+        max_segment_index = max(0, len(points) - 2)
+        segment_index = max(0, min(max_segment_index, int(placement.get("segmentIndex", 0))))
+        start = points[segment_index]
+        end = points[segment_index + 1]
+        t = max(0.0, min(1.0, safe_float(placement.get("t"), 0.5)))
+        point = self.point(
+            start["x"] + (end["x"] - start["x"]) * t,
+            start["y"] + (end["y"] - start["y"]) * t,
+        )
+
+        if abs(end["x"] - start["x"]) < 1:
+            default_side = directions["parentBranchDirection"] if segment_index == 0 else directions["childBranchDirection"]
+            branch_direction = int(placement.get("side") or default_side)
+            label_y = point["y"]
+            if segment_index == 0 and point["y"] < start["y"] + 28:
+                label_y += 10
+            if segment_index != 0 and point["y"] > end["y"] - 28:
+                label_y -= 10
+            return {
+                "x": point["x"] + branch_direction * 16,
+                "y": label_y,
+                "anchor": "end" if branch_direction < 0 else "start",
+            }
+
+        vertical_direction = int(placement.get("side") or -1)
+        return {
+            "x": point["x"],
+            "y": point["y"] + vertical_direction * 20,
+            "anchor": "middle",
+        }
+
+    def ownership_geometry(
+        self,
+        edge: dict[str, Any],
+        parent: dict[str, Any],
+        child: dict[str, Any],
+        branch_levels: dict[str, float],
+    ) -> dict[str, Any]:
+        start = self.point(float(parent.get("x", 0)) + BOX_WIDTH / 2, self.ownership_start_y(parent))
+        end = self.point(float(child.get("x", 0)) + BOX_WIDTH / 2, float(child.get("y", 0)))
+        mid_y = branch_levels.get(str(parent.get("id")), start["y"] + (end["y"] - start["y"]) / 2)
+        points = [start, self.point(start["x"], mid_y), self.point(end["x"], mid_y), end]
+
+        incoming_parent_count = self.count_ownership_parents_for_child(str(child.get("id")))
+        place_label_on_parent_branch = incoming_parent_count > 1
+        parent_branch_direction = -1 if start["x"] <= end["x"] else 1
+        child_branch_direction = -1 if end["x"] <= start["x"] else 1
+        default_placement = (
+            {
+                "segmentIndex": 0,
+                "t": self.label_t_for_segment(points[0], points[1]),
+                "side": parent_branch_direction,
+            }
+            if place_label_on_parent_branch
+            else {
+                "segmentIndex": 2,
+                "t": self.label_t_for_segment(points[2], points[3]),
+                "side": child_branch_direction,
+            }
+        )
+        placement = edge.get("labelPlacement") or default_placement
+        return {
+            "points": points,
+            "label": self.ownership_label_position(
+                placement,
+                points,
+                {
+                    "parentBranchDirection": parent_branch_direction,
+                    "childBranchDirection": child_branch_direction,
+                },
+            ),
+        }
+
+    def build_ownership_segments(self, branch_levels: dict[str, float]) -> list[tuple[dict[str, float], dict[str, float]]]:
+        segments: list[tuple[dict[str, float], dict[str, float]]] = []
+        for edge in self.payload.get("edges", []):
+            if edge.get("kind") != "ownership":
+                continue
+            nodes = ownership_render_nodes(edge, self.nodes)
+            if not nodes:
+                continue
+            parent, child = nodes
+            geometry = self.ownership_geometry(edge, parent, child, branch_levels)
+            points = geometry["points"]
+            for index in range(len(points) - 1):
+                segments.append((points[index], points[index + 1]))
+        return segments
 
     def render_nodes(self) -> None:
         for node in self.payload.get("nodes", []):
@@ -574,10 +803,10 @@ class EditablePptxDiagramBuilder:
                 self.render_individual(node, x, y, label)
             elif node_type == "trust":
                 self.add_shape(MSO_SHAPE.OVAL, x, y, BOX_WIDTH, BOX_HEIGHT, fill=fill, dashed=dashed)
-                self.add_textbox(label, x + 5, y, BOX_WIDTH - 10, BOX_HEIGHT, font_size=9)
+                self.add_textbox(label, x + 5, y, BOX_WIDTH - 10, BOX_HEIGHT, font_size=12, bold=True)
             elif node_type == "partnership":
                 self.add_shape(MSO_SHAPE.ISOSCELES_TRIANGLE, x, y, BOX_WIDTH, BOX_HEIGHT, fill=fill, dashed=dashed)
-                self.add_textbox(label, x + 10, y + 25, BOX_WIDTH - 20, BOX_HEIGHT - 30, font_size=8.5)
+                self.add_textbox(label, x + 10, y + 25, BOX_WIDTH - 20, BOX_HEIGHT - 30, font_size=11, bold=True)
             else:
                 self.add_shape(MSO_SHAPE.RECTANGLE, x, y, BOX_WIDTH, BOX_HEIGHT, fill=fill, dashed=dashed)
                 if node_type in {"dreg", "hybrid"}:
@@ -599,7 +828,7 @@ class EditablePptxDiagramBuilder:
                     inner_dashed = node.get("innerLineStyle") == "dashed"
                     self.add_line(x, y, x + BOX_WIDTH / 2, y + BOX_HEIGHT, dashed=inner_dashed)
                     self.add_line(x + BOX_WIDTH, y, x + BOX_WIDTH / 2, y + BOX_HEIGHT, dashed=inner_dashed)
-                self.add_textbox(label, x + 5, y, BOX_WIDTH - 10, BOX_HEIGHT, font_size=9)
+                self.add_textbox(label, x + 5, y, BOX_WIDTH - 10, BOX_HEIGHT, font_size=12, bold=True)
 
             if node.get("crossedOut") and node_type != "individual":
                 self.add_line(x - 8, y - 8, x + BOX_WIDTH + 8, y + BOX_HEIGHT + 8, dashed=True)
@@ -617,7 +846,323 @@ class EditablePptxDiagramBuilder:
             self.add_line(cx - 18, top + 30, cx + 18, top + 30, width_pt=0.9)
             self.add_line(cx, top + 46, cx - 16, top + 68, width_pt=0.9)
             self.add_line(cx, top + 46, cx + 16, top + 68, width_pt=0.9)
-        self.add_textbox(label, x, y + BOX_HEIGHT + 2, BOX_WIDTH, 36, font_size=9)
+        self.add_textbox(label, x, y + BOX_HEIGHT + 2, BOX_WIDTH, 36, font_size=12, bold=True)
+
+    def transaction_sibling_offset(self, edge: dict[str, Any]) -> float:
+        siblings = [
+            candidate
+            for candidate in self.payload.get("edges", [])
+            if candidate.get("kind") == "transaction"
+            and (
+                (candidate.get("from") == edge.get("from") and candidate.get("to") == edge.get("to"))
+                or (candidate.get("from") == edge.get("to") and candidate.get("to") == edge.get("from"))
+            )
+        ]
+        siblings.sort(key=lambda candidate: str(candidate.get("id", "")))
+        try:
+            index = next(i for i, candidate in enumerate(siblings) if candidate.get("id") == edge.get("id"))
+        except StopIteration:
+            return 0
+        spacing = 30
+        centered_index = index - (len(siblings) - 1) / 2
+        return centered_index * spacing
+
+    def transaction_side_spread(self, node: dict[str, Any], edge: dict[str, Any], role: str, side: str) -> float:
+        counterpart_id = edge.get("to") if role == "from" else edge.get("from")
+        counterpart = self.nodes.get(counterpart_id)
+        if not counterpart:
+            return 0
+
+        center_x = float(node.get("x", 0)) + BOX_WIDTH / 2
+        counterpart_center_x = float(counterpart.get("x", 0)) + BOX_WIDTH / 2
+        preferred_side = "left" if counterpart_center_x < center_x else "right"
+        if preferred_side != side:
+            return 0
+
+        filtered = [
+            candidate
+            for candidate in self.payload.get("edges", [])
+            if candidate.get("kind") == "transaction"
+            and (
+                (candidate.get("from") == edge.get("from") and candidate.get("to") == edge.get("to"))
+                or (candidate.get("from") == edge.get("to") and candidate.get("to") == edge.get("from"))
+            )
+        ]
+        filtered.sort(key=lambda candidate: str(candidate.get("id", "")))
+        try:
+            index = next(i for i, candidate in enumerate(filtered) if candidate.get("id") == edge.get("id"))
+        except StopIteration:
+            return 0
+        spacing = 24
+        centered_index = index - (len(filtered) - 1) / 2
+        return centered_index * spacing
+
+    def side_anchors(self, node: dict[str, Any], edge: dict[str, Any], role: str) -> list[dict[str, Any]]:
+        cy = float(node.get("y", 0)) + BOX_HEIGHT / 2
+        left_offset = self.transaction_side_spread(node, edge, role, "left")
+        right_offset = self.transaction_side_spread(node, edge, role, "right")
+        return [
+            {"side": "left", "point": self.point(float(node.get("x", 0)), cy + left_offset), "outward": self.point(-1, 0)},
+            {
+                "side": "right",
+                "point": self.point(float(node.get("x", 0)) + BOX_WIDTH, cy + right_offset),
+                "outward": self.point(1, 0),
+            },
+        ]
+
+    def sample_bezier(
+        self,
+        p0: dict[str, float],
+        p1: dict[str, float],
+        p2: dict[str, float],
+        p3: dict[str, float],
+        steps: int,
+    ) -> list[dict[str, float]]:
+        points = []
+        for step in range(steps + 1):
+            t = step / steps
+            mt = 1 - t
+            points.append(
+                self.point(
+                    mt * mt * mt * p0["x"] + 3 * mt * mt * t * p1["x"] + 3 * mt * t * t * p2["x"] + t * t * t * p3["x"],
+                    mt * mt * mt * p0["y"] + 3 * mt * mt * t * p1["y"] + 3 * mt * t * t * p2["y"] + t * t * t * p3["y"],
+                ),
+            )
+        return points
+
+    def direction(self, pi: dict[str, float], pj: dict[str, float], pk: dict[str, float]) -> float:
+        return (pk["x"] - pi["x"]) * (pj["y"] - pi["y"]) - (pj["x"] - pi["x"]) * (pk["y"] - pi["y"])
+
+    def segments_intersect(self, p1: dict[str, float], p2: dict[str, float], p3: dict[str, float], p4: dict[str, float]) -> bool:
+        d1 = self.direction(p3, p4, p1)
+        d2 = self.direction(p3, p4, p2)
+        d3 = self.direction(p1, p2, p3)
+        d4 = self.direction(p1, p2, p4)
+        return (((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) and ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0)))
+
+    def count_intersections(
+        self,
+        curve_points: list[dict[str, float]],
+        ownership_segments: list[tuple[dict[str, float], dict[str, float]]],
+    ) -> int:
+        count = 0
+        for index in range(len(curve_points) - 1):
+            a1 = curve_points[index]
+            a2 = curve_points[index + 1]
+            for b1, b2 in ownership_segments:
+                if self.segments_intersect(a1, a2, b1, b2):
+                    count += 1
+        return count
+
+    def point_to_segment_distance(self, point: dict[str, float], a: dict[str, float], b: dict[str, float]) -> float:
+        dx = b["x"] - a["x"]
+        dy = b["y"] - a["y"]
+        if dx == 0 and dy == 0:
+            return math.hypot(point["x"] - a["x"], point["y"] - a["y"])
+        t = max(0.0, min(1.0, ((point["x"] - a["x"]) * dx + (point["y"] - a["y"]) * dy) / (dx * dx + dy * dy)))
+        projection = self.point(a["x"] + t * dx, a["y"] + t * dy)
+        return math.hypot(point["x"] - projection["x"], point["y"] - projection["y"])
+
+    def proximity_penalty(
+        self,
+        curve_points: list[dict[str, float]],
+        ownership_segments: list[tuple[dict[str, float], dict[str, float]]],
+    ) -> float:
+        penalty = 0.0
+        for point in curve_points:
+            for a, b in ownership_segments:
+                distance = self.point_to_segment_distance(point, a, b)
+                if distance < 24:
+                    penalty += 24 - distance
+        return penalty
+
+    def point_inside_node_bounds(self, point: dict[str, float], node: dict[str, Any], padding: float = 0) -> bool:
+        node_x = float(node.get("x", 0))
+        node_y = float(node.get("y", 0))
+        return (
+            point["x"] >= node_x - padding
+            and point["x"] <= node_x + BOX_WIDTH + padding
+            and point["y"] >= node_y - padding
+            and point["y"] <= node_y + BOX_HEIGHT + padding
+        )
+
+    def point_to_node_bounds_distance(self, point: dict[str, float], node: dict[str, Any], padding: float = 0) -> float:
+        node_x = float(node.get("x", 0))
+        node_y = float(node.get("y", 0))
+        left = node_x - padding
+        right = node_x + BOX_WIDTH + padding
+        top = node_y - padding
+        bottom = node_y + BOX_HEIGHT + padding
+        dx = max(left - point["x"], 0, point["x"] - right)
+        dy = max(top - point["y"], 0, point["y"] - bottom)
+        return math.hypot(dx, dy)
+
+    def should_ignore_endpoint_sample(self, index: int, total: int, role: str) -> bool:
+        if role == "from":
+            return index <= 3
+        if role == "to":
+            return index >= total - 4
+        return False
+
+    def count_entity_intersections(self, curve_points: list[dict[str, float]], nodes: list[dict[str, Any]]) -> int:
+        count = 0
+        for index, point in enumerate(curve_points):
+            for node_info in nodes:
+                role = node_info["role"]
+                node = node_info["node"]
+                if self.should_ignore_endpoint_sample(index, len(curve_points), role):
+                    continue
+                if self.point_inside_node_bounds(point, node, 14):
+                    count += 1
+        return count
+
+    def entity_proximity_penalty(self, curve_points: list[dict[str, float]], nodes: list[dict[str, Any]]) -> float:
+        penalty = 0.0
+        for index, point in enumerate(curve_points):
+            for node_info in nodes:
+                role = node_info["role"]
+                node = node_info["node"]
+                if self.should_ignore_endpoint_sample(index, len(curve_points), role):
+                    continue
+                distance = self.point_to_node_bounds_distance(point, node, 14)
+                if distance < 30:
+                    penalty += 30 - distance
+        return penalty
+
+    def transaction_label_sample_index(self, edge: dict[str, Any], samples: list[dict[str, float]]) -> int:
+        siblings = [
+            candidate
+            for candidate in self.payload.get("edges", [])
+            if candidate.get("kind") == "transaction"
+            and (
+                (candidate.get("from") == edge.get("from") and candidate.get("to") == edge.get("to"))
+                or (candidate.get("from") == edge.get("to") and candidate.get("to") == edge.get("from"))
+            )
+        ]
+        siblings.sort(key=lambda candidate: str(candidate.get("id", "")))
+        try:
+            index = next(i for i, candidate in enumerate(siblings) if candidate.get("id") == edge.get("id"))
+        except StopIteration:
+            index = 0
+        centered_index = index - (len(siblings) - 1) / 2 if siblings else 0
+        ratio = max(0.25, min(0.75, 0.5 + centered_index * 0.12))
+        return max(2, min(len(samples) - 3, round((len(samples) - 1) * ratio)))
+
+    def build_transaction_candidate(
+        self,
+        edge: dict[str, Any],
+        from_anchor: dict[str, Any],
+        to_anchor: dict[str, Any],
+        sibling_offset: float,
+        obstacle_nodes: list[dict[str, Any]],
+        preferred_sides: dict[str, str] | None,
+        bend_bias: float = 0,
+    ) -> dict[str, Any]:
+        dx = to_anchor["point"]["x"] - from_anchor["point"]["x"]
+        dy = to_anchor["point"]["y"] - from_anchor["point"]["y"]
+        control_distance = max(40.0, min(84.0, math.hypot(dx, dy) * 0.24))
+        normal_length = math.hypot(dx, dy) or 1.0
+        normal = self.point(-dy / normal_length, dx / normal_length)
+        total_bend = max(-140.0, min(140.0, sibling_offset + bend_bias))
+        offset_vector = self.point(normal["x"] * total_bend, normal["y"] * total_bend)
+        start_point = self.point(from_anchor["point"]["x"], from_anchor["point"]["y"])
+        end_point = self.point(to_anchor["point"]["x"], to_anchor["point"]["y"])
+        c1 = self.point(
+            start_point["x"] + from_anchor["outward"]["x"] * control_distance + offset_vector["x"],
+            start_point["y"] + from_anchor["outward"]["y"] * control_distance + offset_vector["y"],
+        )
+        c2 = self.point(
+            end_point["x"] + to_anchor["outward"]["x"] * control_distance + offset_vector["x"],
+            end_point["y"] + to_anchor["outward"]["y"] * control_distance + offset_vector["y"],
+        )
+        samples = self.sample_bezier(start_point, c1, c2, end_point, 24)
+        intersections = self.count_intersections(samples, self.ownership_segments)
+        same_side_penalty = 0 if from_anchor["side"] == to_anchor["side"] else 18
+        route_side_penalty = (
+            300
+            if preferred_sides
+            and (
+                preferred_sides.get("from") != from_anchor["side"]
+                or preferred_sides.get("to") != to_anchor["side"]
+            )
+            else 0
+        )
+        ownership_proximity_penalty = self.proximity_penalty(samples, self.ownership_segments)
+        node_intersections = self.count_entity_intersections(samples, obstacle_nodes)
+        node_proximity_penalty = self.entity_proximity_penalty(samples, obstacle_nodes)
+        label_index = self.transaction_label_sample_index(edge, samples)
+        label_point = samples[label_index]
+        score = (
+            intersections * 5000
+            + node_intersections * 12000
+            + ownership_proximity_penalty * 8
+            + node_proximity_penalty * 18
+            + same_side_penalty
+            + route_side_penalty
+            + abs(total_bend) * 2.2
+            + abs(bend_bias) * 1.2
+            + math.hypot(dx, dy)
+        )
+        return {
+            "score": score,
+            "points": samples,
+            "fromSide": from_anchor["side"],
+            "toSide": to_anchor["side"],
+            "label": self.point(label_point["x"], label_point["y"] - 14),
+        }
+
+    def fallback_transaction_geometry(self, from_node: dict[str, Any], to_node: dict[str, Any]) -> dict[str, Any]:
+        from_center = self.node_center(from_node)
+        to_center = self.node_center(to_node)
+        c1 = self.point(from_center["x"] + 60, from_center["y"])
+        c2 = self.point(to_center["x"] - 60, to_center["y"])
+        samples = self.sample_bezier(from_center, c1, c2, to_center, 24)
+        return {
+            "points": samples,
+            "label": self.point((from_center["x"] + to_center["x"]) / 2, (from_center["y"] + to_center["y"]) / 2 - 16),
+        }
+
+    def transaction_geometry(self, edge: dict[str, Any], from_node: dict[str, Any], to_node: dict[str, Any]) -> dict[str, Any]:
+        candidates = []
+        from_anchors = self.side_anchors(from_node, edge, "from")
+        to_anchors = self.side_anchors(to_node, edge, "to")
+        sibling_offset = self.transaction_sibling_offset(edge) + safe_float(edge.get("curveOffset"), 0)
+        obstacle_nodes = [
+            {
+                "node": node,
+                "role": (
+                    "from"
+                    if node.get("id") == from_node.get("id")
+                    else "to"
+                    if node.get("id") == to_node.get("id")
+                    else "other"
+                ),
+            }
+            for node in self.payload.get("nodes", [])
+        ]
+        bend_variants = [0, -36, 36, -72, 72, -108, 108]
+        preferred_sides = edge.get("routeSides")
+
+        for from_anchor in from_anchors:
+            for to_anchor in to_anchors:
+                for bend_bias in bend_variants:
+                    candidates.append(
+                        self.build_transaction_candidate(
+                            edge,
+                            from_anchor,
+                            to_anchor,
+                            sibling_offset,
+                            obstacle_nodes,
+                            preferred_sides,
+                            bend_bias,
+                        ),
+                    )
+
+        candidates.sort(key=lambda candidate: candidate["score"])
+        best = candidates[0] if candidates else self.fallback_transaction_geometry(from_node, to_node)
+        if best.get("fromSide") and best.get("toSide"):
+            edge["routeSides"] = {"from": best["fromSide"], "to": best["toSide"]}
+        return best
 
     def render_edges(self, kind: str) -> None:
         for edge in self.payload.get("edges", []):
@@ -636,33 +1181,35 @@ class EditablePptxDiagramBuilder:
         if not nodes:
             return
         parent, child = nodes
-        start_x = float(parent.get("x", 0)) + BOX_WIDTH / 2
-        start_y = self.ownership_start_y(parent)
-        end_x = float(child.get("x", 0)) + BOX_WIDTH / 2
-        end_y = float(child.get("y", 0))
-        mid_y = start_y + (end_y - start_y) / 2
         color = self.edge_color(edge)
         dashed = edge.get("lineStyle") == "dashed"
-
-        self.add_line(start_x, start_y, start_x, mid_y, color=color, dashed=dashed)
-        self.add_line(start_x, mid_y, end_x, mid_y, color=color, dashed=dashed)
-        self.add_line(end_x, mid_y, end_x, end_y, color=color, dashed=dashed)
+        geometry = self.ownership_geometry(edge, parent, child, self.ownership_branch_levels)
+        self.add_polyline(geometry["points"], color=color, dashed=dashed, width_pt=2.2)
 
         label = "\n".join(str(value) for value in [edge.get("percent"), edge.get("label")] if value)
         if not label:
             return
-        side = -1 if end_x <= start_x else 1
-        label_width = 60
-        label_x = end_x + side * 14 - (label_width if side < 0 else 0)
+        label_pos = geometry["label"]
+        label_width = 70
+        anchor = label_pos["anchor"]
+        if anchor == "end":
+            label_x = label_pos["x"] - label_width
+            align = PP_ALIGN.RIGHT
+        elif anchor == "start":
+            label_x = label_pos["x"]
+            align = PP_ALIGN.LEFT
+        else:
+            label_x = label_pos["x"] - label_width / 2
+            align = PP_ALIGN.CENTER
         self.add_textbox(
             label,
             label_x,
-            (mid_y + end_y) / 2 - 12,
+            label_pos["y"] - 11,
             label_width,
-            26,
-            font_size=7.5,
+            22,
+            font_size=10.5,
             color=color,
-            align=PP_ALIGN.RIGHT if side < 0 else PP_ALIGN.LEFT,
+            align=align,
         )
 
     def render_transaction(self, edge: dict[str, Any]) -> None:
@@ -671,34 +1218,25 @@ class EditablePptxDiagramBuilder:
         if not from_node or not to_node:
             return
 
-        from_left = float(from_node.get("x", 0)) > float(to_node.get("x", 0))
-        fx = float(from_node.get("x", 0)) + (0 if from_left else BOX_WIDTH)
-        tx = float(to_node.get("x", 0)) + (BOX_WIDTH if from_left else 0)
-        fy = float(from_node.get("y", 0)) + BOX_HEIGHT / 2
-        ty = float(to_node.get("y", 0)) + BOX_HEIGHT / 2
         color = self.edge_color(edge)
         dashed = edge.get("lineStyle") == "dashed"
-        connector_type = MSO_CONNECTOR.CURVE if edge.get("curveOffset") else MSO_CONNECTOR.STRAIGHT
+        geometry = self.transaction_geometry(edge, from_node, to_node)
 
-        self.add_line(
-            fx,
-            fy,
-            tx,
-            ty,
+        self.add_polyline(
+            geometry["points"],
             color=color,
             dashed=dashed,
-            width_pt=1.6,
+            width_pt=2.4,
             arrow_end=True,
             arrow_start=bool(edge.get("bidirectional")),
-            connector_type=connector_type,
         )
         self.add_textbox(
             edge.get("label") or "Transaction",
-            (fx + tx) / 2 - 55,
-            (fy + ty) / 2 - 13,
-            110,
-            26,
-            font_size=7.5,
+            geometry["label"]["x"] - 62,
+            geometry["label"]["y"] - 11,
+            124,
+            22,
+            font_size=10.5,
             color=color,
         )
 
@@ -737,7 +1275,7 @@ class EditablePptxDiagramBuilder:
 
 
 def build_pptx(payload: dict[str, Any]) -> bytes:
-    return EditablePptxDiagramBuilder(payload).build()
+    return EditablePptxDiagramBuilder(normalize_payload(payload)).build()
 
 class TaxChartHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
